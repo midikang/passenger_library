@@ -1,0 +1,845 @@
+---
+title: Using SSL with Passenger in development
+section: walkthroughs
+---
+<%
+locals.merge!(INTEGRATION_MODE_STANDALONE)
+globals.merge!(INTEGRATION_MODE_STANDALONE)
+content_for(:sidebar) do
+    render_partial("../sidebar.html", locals: locals.merge(
+        limit_choices: { "intmode" => [INTEGRATION_MODE_STANDALONE] }
+    ))
+end
+%>
+
+<h1>Using SSL with Passenger in development</h1>
+
+It is a good idea to have your dev env be as close to your production env as possible, without getting in your way. For example setting up ssl in your dev env helps you to fix mixed content warnings so there are no surprises when you move to staging or production, and doesn't train you to click through ssl warnings in your browser.
+
+## Prepare the system
+
+Assumptions: you are using the bash shell, and have admin rights to your computer, and are using Firefox, Chrome, or Safari. Ensure that openssl, passenger, dnsmasq, and optionally nginx or apache are installed.
+
+Follow these instructions to install passenger: https://www.phusionpassenger.com/library/install/apache/install/enterprise/ you may have to adjust the settings to your desired config, for example using passenger standalone or with nginx.
+
+<table class="table table-bordered table-striped">
+    <tr>
+        <td>
+            Debian, Ubuntu
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>sudo apt-get update
+<span class="prompt">$ </span>sudo apt-get upgrade -y
+<span class="prompt">$ </span>sudo apt-get install -y openssl dnsmasq
+<span class="prompt">$ </span>sudo apt-get install -y apache2 nginx &#35; optional, use at most one webserver
+<span class="prompt">$ </span>sudo a2enmod ssl &#35; only if using apache</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            Red Hat, CentOS, Fedora, Amazon Linux, Scientific Linux
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>sudo yum update -y
+<span class="prompt">$ </span>sudo yum install -y openssl dnsmasq openssl-perl
+<span class="prompt">$ </span>sudo yum install -y httpd24 mod24_ssl nginx &#35; optional, mod24_ssl goes with httpd24 install both or neither</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            Mac OS X
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>/usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)" &#35; if not already installed
+<span class="prompt">$ </span>sudo softwareupdate -i -a
+<span class="prompt">$ </span>brew update
+<span class="prompt">$ </span>brew upgrade
+<span class="prompt">$ </span>brew install openssl passenger dnsmasq
+<span class="prompt">$ </span>brew install nginx &#35; optional (apache is already installed)
+&#35; uncomment LoadModule ssl_module libexec/apache2/mod_ssl.so if using apache</pre>
+        </td>
+    </tr>
+</table>
+
+## Software versions used in this article:
+
+to check the versions of the packages you have installed you can use the following commands:
+
+<table class="table table-bordered table-striped">
+    <thead>
+        <th>
+            Package
+        </th>
+        <th>
+            Version
+        </th>
+        <th>
+            Linux Command
+        </th>
+        <th>
+            Mac Command
+        </th>
+    </thead>
+    <tr>
+        <td>
+            openssl
+        </td>
+        <td>
+            1.0.2h
+        </td>
+        <td colspan="2">
+            <pre class="highlight"><span class="prompt">$ </span>openssl version</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            passenger
+        </td>
+        <td>
+            5.0.29
+        </td>
+        <td colspan="2">
+            <pre class="highlight"><span class="prompt">$ </span>passenger -v</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            nginx
+        </td>
+        <td>
+            1.10.1
+        </td>
+        <td colspan="2">
+            <pre class="highlight"><span class="prompt">$ </span>nginx -v</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            apache httpd
+        </td>
+        <td>
+            2.4.18
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>httpd -v || apache2 -v</pre>
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>httpd -v</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            dnsmasq
+        </td>
+        <td>
+            2.76
+        </td>
+        <td colspan="2">
+            <pre class="highlight"><span class="prompt">$ </span>dnsmasq -v</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            firefox
+        </td>
+        <td>
+            47.0.1
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>firefox -v</pre>
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>/Applications/Firefox.app/Contents/MacOS/firefox -v</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            chrome
+        </td>
+        <td>
+            51.0.2704.&#42;
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>google-chrome --version</pre>
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>/Applications/Chrome.app/Contents/MacOS/Google\ Chrome --version</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            safari
+        </td>
+        <td>
+            9.1.1
+        </td>
+        <td>
+            <pre class="highlight">N/A</pre>
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>system_profiler -xml SPApplicationsDataType | xmllint --xpath \
+"//array/dict/array/dict[string='Safari']/key[.='version']/following-sibling::&#42;[1]/text()" -</pre>
+        </td>
+    </tr>
+</table>
+
+# Openssl configuration
+
+When setting up a dev environment with ssl it is better practice to use a self signed certificate, and leave your real certificate/key pair somewhere safe and encrypted, preferably on offline storage like a thumb drive in a safe place. In order to create a certificate that works and makes development convenient, you need to edit the `openssl.cnf` file.
+
+On OS X this is located at `/usr/local/etc/openssl/openssl.cnf` or if it isn't there you can copy `/usr/local/etc/openssl/openssl.cnf.default` to that path as a starting point, and edit from there.
+
+On linux it may be in one of the following locations: `/usr/local/ssl/openssl.cnf` `/usr/lib/ssl/openssl.cnf` `/etc/ssl/openssl.cnf` `/etc/pki/tls/openssl.cnf`
+
+the changes you need to make are as follows:
+
+## uncomment these lines, they enable needed functionality:
+~~~
+# unique_subject = no
+# copy_extensions = copy
+# req_extensions = v3_req
+# keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+# keyUsage = cRLSign, keyCertSign
+~~~
+
+## comment out these lines, they get in the way:
+~~~
+attributes              = req_attributes
+[ req_attributes ]
+challengePassword               = A challenge password
+challengePassword_min           = 4
+challengePassword_max           = 20
+unstructuredName                = An optional company name
+~~~
+
+## and modify the following values as indicated:
+~~~
+default_days = 365 → 3650 # there's no reason to have to redo this every year
+default_md = default → sha256 # default in openssl 1.1.0, needed for modern browsers
+~~~
+
+## modify the following values as desired:
+~~~
+countryName_default             = # two letter country code
+stateOrProvinceName_default     = # name of province or state
+localityName_default            = # name of city
+0.organizationName_default      = # name of organization
+organizationalUnitName_default  = # name of department
+commonName_default              = # your main domain
+emailAddress_default            = # your email
+~~~
+
+## add this on a new line under `keyUsage = nonRepudiation, digitalSignature, keyEncipherment`:
+~~~
+subjectAltName = @alt_names
+[alt_names]
+DNS.1 = domain1.dev
+DNS.2 = localhost
+DNS.3 = domain2.dev
+DNS.4 = &#42;.domain1.dev
+# and as many more as you want, note: you must use domains not IP addresses
+~~~
+
+## A working sample is provided below, replace occurences of phusion with your own domain:
+<pre class="highlight conf">
+    <code>
+#
+# OpenSSL example configuration file.
+# This is mostly being used for generation of certificate requests.
+#
+
+# This definition stops the following lines choking if HOME isn't
+# defined.
+HOME			= .
+RANDFILE		= $ENV::HOME/.rnd
+
+# Extra OBJECT IDENTIFIER info:
+#oid_file		= $ENV::HOME/.oid
+oid_section		= new_oids
+
+# To use this configuration file with the "-extfile" option of the
+# "openssl x509" utility, name here the section containing the
+# X.509v3 extensions to use:
+# extensions		=
+# (Alternatively, use a configuration file that has only
+# X.509v3 extensions in its main [= default] section.)
+
+[ new_oids ]
+
+# We can add new OIDs in here for use by 'ca', 'req' and 'ts'.
+# Add a simple OID like this:
+# testoid1=1.2.3.4
+# Or use config file substitution like this:
+# testoid2=${testoid1}.5.6
+
+# Policies used by the TSA examples.
+tsa_policy1 = 1.2.3.4.1
+tsa_policy2 = 1.2.3.4.5.6
+tsa_policy3 = 1.2.3.4.5.7
+
+####################################################################
+[ ca ]
+default_ca	= CA_default		# The default ca section
+
+####################################################################
+[ CA_default ]
+
+dir		= ./demoCA		# Where everything is kept
+certs		= $dir/certs		# Where the issued certs are kept
+crl_dir		= $dir/crl		# Where the issued crl are kept
+database	= $dir/index.txt	# database index file.
+unique_subject	= no			# Set to 'no' to allow creation of
+# several ctificates with same subject.
+new_certs_dir	= $dir/newcerts		# default place for new certs.
+
+certificate	= $dir/cacert.pem       # The CA certificate
+serial		= $dir/serial           # The current serial number
+crlnumber	= $dir/crlnumber	# the current crl number
+# must be commented out to leave a V1 CRL
+crl		= $dir/crl.pem          # The current CRL
+private_key	= $dir/private/cakey.pem# The private key
+RANDFILE	= $dir/private/.rand	# private random number file
+
+x509_extensions	= usr_cert		# The extentions to add to the cert
+
+# Comment out the following two lines for the "traditional"
+# (and highly broken) format.
+name_opt        = ca_default		# Subject Name options
+cert_opt        = ca_default		# Certificate field options
+
+# Extension copying option: use with caution.
+copy_extensions = copy
+
+# Extensions to add to a CRL. Note: Netscape communicator chokes on V2 CRLs
+# so this is commented out by default to leave a V1 CRL.
+# crlnumber must also be commented out to leave a V1 CRL.
+# crl_extensions	= crl_ext
+
+default_days	= 3650			# how long to certify for
+default_crl_days= 30			# how long before next CRL
+default_md	= sha256			# which md to use.
+preserve	= no			# keep passed DN ordering
+
+# A few difference way of specifying how similar the request should look
+# For type CA, the listed attributes must be the same, and the optional
+# and supplied fields are just that :-)
+policy		= policy_match
+
+# For the CA policy
+[ policy_match ]
+countryName		= match
+stateOrProvinceName	= match
+organizationName	= match
+organizationalUnitName	= optional
+commonName		= supplied
+emailAddress		= optional
+
+# For the 'anything' policy
+# At this point in time, you must list all acceptable 'object'
+# types.
+[ policy_anything ]
+countryName		= optional
+stateOrProvinceName	= optional
+localityName		= optional
+organizationName	= optional
+organizationalUnitName	= optional
+commonName		= supplied
+emailAddress		= optional
+
+####################################################################
+[ req ]
+default_bits		= 4096
+default_keyfile         = privkey.pem
+distinguished_name	= req_distinguished_name
+#attributes		= req_attributes
+x509_extensions	= v3_ca	# The extentions to add to the self signed cert
+
+# Passwords for private keys if not present they will be prompted for
+# input_password = secret
+# output_password = secret
+
+# This sets a mask for permitted string types. There are several options.
+# default: PrintableString, T61String, BMPString.
+# pkix   : PrintableString, BMPString (PKIX recommendation before 2004)
+# utf8only: only UTF8Strings (PKIX recommendation after 2004).
+# nombstr : PrintableString, T61String (no BMPStrings or UTF8Strings).
+# MASK:XXXX a literal mask value.
+# WARNING: ancient versions of Netscape crash on BMPStrings or UTF8Strings.
+string_mask = utf8only
+
+req_extensions = v3_req # The extensions to add to a certificate request
+
+[ req_distinguished_name ]
+countryName			= Country Name (2 letter code)
+countryName_default		= NL
+countryName_min			= 2
+countryName_max			= 2
+
+stateOrProvinceName		= State or Province Name (full name)
+stateOrProvinceName_default	= North Holland
+
+localityName			= Locality Name (eg, city)
+localityName_default            = Amsterdam
+
+0.organizationName		= Organization Name (eg, company)
+0.organizationName_default	= Phusion
+
+# we can do this but it is not needed normally :-)
+#1.organizationName		= Second Organization Name (eg, company)
+#1.organizationName_default	= World Wide Web Pty Ltd
+
+organizationalUnitName		= Organizational Unit Name (eg, section)
+organizationalUnitName_default	= Certificate Services
+
+commonName			= Common Name (e.g. server FQDN or YOUR name)
+commonName_max			= 64
+commonName_default              = www.phusion.nl
+
+emailAddress			= Email Address
+emailAddress_max		= 64
+emailAddress_default            = info@phusion.nl
+
+# SET-ex3			= SET extension number 3
+
+#[ req_attributes ]
+#challengePassword		= A challenge password
+#challengePassword_min		= 4
+#challengePassword_max		= 20
+
+#unstructuredName		= An optional company name
+
+[ usr_cert ]
+
+# These extensions are added when 'ca' signs a request.
+
+# This goes against PKIX guidelines but some CAs do it and some software
+# requires this to avoid interpreting an end user certificate as a CA.
+
+basicConstraints=CA:FALSE
+
+# Here are some examples of the usage of nsCertType. If it is omitted
+# the certificate can be used for anything &#42;except&#42; object signing.
+
+# This is OK for an SSL server.
+# nsCertType			= server
+
+# For an object signing certificate this would be used.
+# nsCertType = objsign
+
+# For normal client use this is typical
+# nsCertType = client, email
+
+# and for everything including object signing:
+# nsCertType = client, email, objsign
+
+# This is typical in keyUsage for a client certificate.
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+
+# This will be displayed in Netscape's comment listbox.
+nsComment			= "OpenSSL Generated Certificate"
+
+# PKIX recommendations harmless if included in all certificates.
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid,issuer
+
+# This stuff is for subjectAltName and issuerAltname.
+# Import the email address.
+# subjectAltName=email:copy
+# An alternative to produce certificates that aren't
+# deprecated according to PKIX.
+# subjectAltName=email:move
+
+# Copy subject details
+# issuerAltName=issuer:copy
+
+#nsCaRevocationUrl		= http://www.domain.dom/ca-crl.pem
+#nsBaseUrl
+#nsRevocationUrl
+#nsRenewalUrl
+#nsCaPolicyUrl
+#nsSslServerName
+
+# This is required for TSA certificates.
+# extendedKeyUsage = critical,timeStamping
+
+[ v3_req ]
+
+# Extensions to add to a certificate request
+
+basicConstraints = CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+subjectAltName          = @alt_names
+
+[alt_names]
+DNS.1 = domain1.dev
+DNS.2 = localhost
+DNS.3 = domain2.dev
+DNS.4 = &#42;.domain1.dev
+# and as many more as you want, note you must use domains not IP addresses
+
+[ v3_ca ]
+
+
+# Extensions for a typical CA
+
+
+# PKIX recommendation.
+
+subjectKeyIdentifier=hash
+
+authorityKeyIdentifier=keyid:always,issuer
+
+# This is what PKIX recommends but some broken software chokes on critical
+# extensions.
+#basicConstraints = critical,CA:true
+# So we do this instead.
+basicConstraints = CA:true
+
+# Key usage: this is typical for a CA certificate. However since it will
+# prevent it being used as an test self-signed certificate it is best
+# left out by default.
+keyUsage = cRLSign, keyCertSign
+
+# Some might want this also
+# nsCertType = sslCA, emailCA
+
+# Include email address in subject alt name: another PKIX recommendation
+# subjectAltName=email:copy
+# Copy issuer details
+# issuerAltName=issuer:copy
+
+# DER hex encoding of an extension: beware experts only!
+# obj=DER:02:03
+# Where 'obj' is a standard or added object
+# You can even override a supported extension:
+# basicConstraints= critical, DER:30:03:01:01:FF
+
+[ crl_ext ]
+
+# CRL extensions.
+# Only issuerAltName and authorityKeyIdentifier make any sense in a CRL.
+
+# issuerAltName=issuer:copy
+authorityKeyIdentifier=keyid:always
+
+[ proxy_cert_ext ]
+# These extensions should be added when creating a proxy certificate
+
+# This goes against PKIX guidelines but some CAs do it and some software
+# requires this to avoid interpreting an end user certificate as a CA.
+
+basicConstraints=CA:FALSE
+
+# Here are some examples of the usage of nsCertType. If it is omitted
+# the certificate can be used for anything &#42;except&#42; object signing.
+
+# This is OK for an SSL server.
+# nsCertType			= server
+
+# For an object signing certificate this would be used.
+# nsCertType = objsign
+
+# For normal client use this is typical
+# nsCertType = client, email
+
+# and for everything including object signing:
+# nsCertType = client, email, objsign
+
+# This is typical in keyUsage for a client certificate.
+# keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+
+# This will be displayed in Netscape's comment listbox.
+nsComment			= "OpenSSL Generated Certificate"
+
+# PKIX recommendations harmless if included in all certificates.
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid,issuer
+
+# This stuff is for subjectAltName and issuerAltname.
+# Import the email address.
+# subjectAltName=email:copy
+# An alternative to produce certificates that aren't
+# deprecated according to PKIX.
+# subjectAltName=email:move
+
+# Copy subject details
+# issuerAltName=issuer:copy
+
+#nsCaRevocationUrl		= http://www.domain.dom/ca-crl.pem
+#nsBaseUrl
+#nsRevocationUrl
+#nsRenewalUrl
+#nsCaPolicyUrl
+#nsSslServerName
+
+# This really needs to be in place for it to be a proxy certificate.
+proxyCertInfo=critical,language:id-ppl-anyLanguage,pathlen:3,policy:foo
+
+####################################################################
+[ tsa ]
+
+default_tsa = tsa_config1	# the default TSA section
+
+[ tsa_config1 ]
+
+# These are used by the TSA reply generation only.
+dir		= ./demoCA		# TSA root directory
+serial		= $dir/tsaserial	# The current serial number (mandatory)
+crypto_device	= builtin		# OpenSSL engine to use for signing
+signer_cert	= $dir/tsacert.pem      # The TSA signing certificate
+# (optional)
+certs		= $dir/cacert.pem	# Certificate chain to include in reply
+# (optional)
+signer_key	= $dir/private/tsakey.pem # The TSA private key (optional)
+
+default_policy	= tsa_policy1		# Policy if request did not specify it
+# (optional)
+other_policies	= tsa_policy2, tsa_policy3	# acceptable policies (optional)
+digests		= md5, sha1		# Acceptable message digests (mandatory)
+accuracy	= secs:1, millisecs:500, microsecs:100	# (optional)
+clock_precision_digits  = 0	# number of digits after dot. (optional)
+ordering		= yes	# Is ordering defined for timestamps?
+# (optional, default: no)
+tsa_name		= yes	# Must the TSA name be included in the reply?
+# (optional, default: no)
+ess_cert_id_chain	= no	# Must the ESS cert id chain be included?
+# (optional, default: no)
+    </code>
+</pre>
+
+Using a separate TLD for development allows you to access the real production site at the proper url, while having easy access to your dev sites. I use `.dev` and will go into more detail about how to set this up below in the dnsmasq section.
+
+While no browser accepts wildcard certificates for entire TLDs if you are developing a bunch of micro services or sites that share a domain and have added a wildcard for the domain to the list of alt names in the cert, then you can simply add more sites to your setup without changing your certificate and by using mass deployment you don't have to change anything to spin up another site, simply create it in the correct directory.
+
+### Add CA.pl to your path:
+<table class="table table-bordered table-striped">
+    <tr>
+        <td>
+            Debian, Ubuntu
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>PATH=$PATH:/usr/lib/ssl/misc</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            Red Hat, CentOS, Fedora, Amazon Linux, Scientific Linux
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>PATH=$PATH:/etc/pki/tls/misc</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            Mac OS X
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>PATH=$PATH:/usr/local/etc/openssl/misc</pre>
+        </td>
+    </tr>
+</table>
+
+### create your CA using the changes you made to openssl.cnf
+
+<pre class="highlight"><span class="prompt">$ </span>mkdir ~/certs
+<span class="prompt">$ </span>cd ~/certs
+<span class="prompt">$ </span>CA.pl -newca</pre>
+
+## Trust your new CA cert:
+
+the previous command will create a new subdirectory called demoCA, you’ll need to install the ca certificate from the new demoCA dir into your system keychain (and/or firefox) to prevent your browser from warning you about broken ssl.
+
+<table class="table table-bordered table-striped">
+    <tr>
+        <td>
+            Mac OS X with Safari or Chrome:
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>sudo /usr/bin/security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/certs/demoCA/cacert.pem</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            Debian, Ubuntu with Chrome:
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>sudo cp ~/certs/demoCA/cacert.pem /usr/local/share/ca-certificates/myCA.crt
+<span class="prompt">$ </span>sudo dpkg-reconfigure ca-certificates</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            Fedora 19+, RHEL/CentOS 7+ Chrome:
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>sudo cp ~/certs/demoCA/cacert.pem /etc/pki/ca-trust/source/anchors/
+<span class="prompt">$ </span>sudo update-ca-trust
+<span class="prompt">$ </span>sudo update-ca-trust enable &#35; RHEL/CentOS 6 only since: https://rhn.redhat.com/errata/RHEA-2013-1596.html</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            Any OS with Firefox:
+        </td>
+        <td>
+            <pre>open preferences
+click advanced tab
+click certificates tab
+click “view certificates”
+click “import…”
+pick ~/certs/demoCA/cacert.pem file
+In the Downloading Certificate window check "Trust this CA to identify web sites."
+click "OK"</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            Any *nix OS with Curl:
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>curl --cacert ~/certs/demoCA/cacert.pem 'https://mydomain.dev'</pre>
+        </td>
+    </tr>
+</table>
+
+## Create the new server certificate/key pair:
+<pre class="highlight"><span class="prompt">$ </span>cd ~/certs
+<span class="prompt">$ </span>CA.pl -newreq-nodes
+<span class="prompt">$ </span>CA.pl -sign
+</pre>
+
+## Configure webserver, replace example.com with your domain:
+
+<table class="table table-bordered table-striped">
+    <tr>
+        <td>
+            Apache
+        </td>
+        <td>
+            <pre class="highlight">
+ServerTokens Prod
+&lt;VirtualHost *:80&gt;
+    Redirect permanent / https://www.example.com/
+    ServerName example.com
+    ServerAlias www.example.com
+&lt;/VirtualHost&gt;
+
+&lt;VirtualHost *:443&gt;
+    ServerName www.example.com
+
+    ProxyPreserveHost On
+    ProxyPass / http://localhost:3000/
+    ProxyPassReverse / http://localhost:3000/
+
+    SSLEngine on
+    SSLProtocol all -SSLv2 -SSLv3
+    SSLHonorCipherOrder on
+    SSLCipherSuite HIGH
+    SSLCertificateFile "/private/etc/apache2/server.crt"
+    SSLCertificateKeyFile "/private/etc/apache2/server.key"
+    SSLCompression off # not all versions of apache+openssl allow this option
+
+    BrowserMatch "MSIE [2-5]" \
+    nokeepalive ssl-unclean-shutdown \
+    downgrade-1.0 force-response-1.0
+
+    Header always edit Set-Cookie ^(.*)$ $1;HttpOnly;Secure
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+    ServerSignature Off
+
+&lt;/VirtualHost&gt;</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            Nginx
+        </td>
+        <td>
+Use <code><span class="prompt">$ </span>openssl dhparam -out /path/to/dhparam.pem 2048</code> to generate the dhparam file.
+            <pre class="highlight nginx">server_tokens off;
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    return 301 https://$host$request_uri;
+}
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    root /var/www/phusion.dev/public;
+    server_name phusion.dev;
+    ssl_certificate /usr/local/etc/nginx/ssl/server.crt;
+    ssl_certificate_key /usr/local/etc/nginx/ssl/server.key;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:50m;
+    ssl_session_tickets off;
+    ssl_dhparam /usr/local/etc/nginx/ssl/dhparam.pem;
+    ssl_prefer_server_ciphers on;
+    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+    ssl_ciphers HIGH;
+    add_header Strict-Transport-Security max-age=31536000;
+    passenger_enabled on;
+    passenger_app_env development;
+    passenger_app_root /var/www/phusion.dev;
+}</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            Passenger Standalone
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>passenger start --ssl --daemonize --environment development --ssl-certificate ~/certs/newcert.pem \
+--ssl-certificate-key ~/certs/newkey.pem --ssl-port 443</pre>
+        </td>
+    </tr>
+</table>
+
+## Configure DNS
+
+Since you need the domain you visit in your browser to match the ssl cert, you still need to direct all your dev traffic back to localhost. Next I'll describe setting up dnsmasq & configuring your own TLD in order to do just that.
+
+Note some older versions of OS X actually ignored entries in the hosts file for new TLDs (for example: `.dev` stopped working once Google started responding to dns queries for that TLD (yes Google owns `.dev`, but they've stated it's for internal use only, so you're unlikely to break anything if you use it, unless you work for google)), which makes using a dns resolver like dnsmasq all the more useful, because you workaround that bug.
+
+<table class="table table-bordered table-striped">
+    <tr>
+        <td>
+            In Ubuntu 12.10 or later you can do this with dnsmasq as run by NetworkManager.
+        </td>
+        <td>
+            <pre class="highlight"><span class="prompt">$ </span>sudo mkdir -p /etc/NetworkManager/dnsmasq.d
+<span class="prompt">$ </span>sudo echo 'address=/dev/127.0.0.1' &gt; /etc/NetworkManager/dnsmasq.d/dev-TLD
+<span class="prompt">$ </span>sudo service network-manager restart # (Ubuntu 12.10)
+<span class="prompt">$ </span>sudo service dnsmasq restart # (Ubuntu &gt; 13.04)</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            Other Linux
+        </td>
+        <td>
+            <pre class="highlight">
+<span class="prompt">$ </span>sudo echo 'address=/dev/127.0.0.1' &gt; /etc/dnsmasq.d/dev-TLD
+<span class="prompt">$ </span>prepend domain-name-servers 127.0.0.1
+<span class="prompt">$ </span>sudo service NetworkManager restart
+<span class="prompt">$ </span>sudo service dnsmasq start</pre>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            In OS X:
+        </td>
+        <td>
+            <pre class="highlight">
+<span class="prompt">$ </span>echo 'address=/dev/127.0.0.1' &gt;&gt; `brew --prefix`/etc/dnsmasq.conf
+<span class="prompt">$ </span>sudo cp `brew --prefix dnsmasq`/homebrew.mxcl.dnsmasq.plist /Library/LaunchDaemons/
+<span class="prompt">$ </span>sudo launchctl load /Library/LaunchDaemons/homebrew.mxcl.dnsmasq.plist
+<span class="prompt">$ </span>sudo mkdir -p /etc/resolver
+<span class="prompt">$ </span>sudo echo 'nameserver 127.0.0.1' &gt; /etc/resolver/dev</pre>
+        </td>
+    </tr>
+</table>
+
+## Done
+
+Now if you restart your web server, ssl should be working and your browser shouldn't complain.
