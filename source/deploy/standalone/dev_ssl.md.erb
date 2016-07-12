@@ -1,191 +1,188 @@
 ---
-title: Using SSL with Passenger in development
+title: Using SSL with Passenger in Development
 section: walkthroughs
 ---
 <%
 locals.merge!(INTEGRATION_MODE_STANDALONE)
 globals.merge!(INTEGRATION_MODE_STANDALONE)
 content_for(:sidebar) do
-    render_partial("../sidebar.html", locals: locals.merge(
-        limit_choices: { "intmode" => [INTEGRATION_MODE_STANDALONE] }
-    ))
+  render_partial("../sidebar.html", locals: locals)
 end
 %>
-
 <h1>Using SSL with Passenger in development</h1>
 
-It is a good idea to have your dev env be as close to your production env as possible, without getting in your way. For example setting up ssl in your dev env helps you to fix mixed content warnings so there are no surprises when you move to staging or production, and doesn't train you to click through ssl warnings in your browser.
+It is a good idea to have your development environment be as close to your production environment as possible, without getting in your way. For example setting up SSL in your development environment helps you to fix mixed content warnings so there are no surprises when you move to staging or production, and doesn't train you to click through SSL warnings in your browser.
 
-## Prepare the system
+## Prepare the System
 
-Assumptions: you are using the bash shell, and have admin rights to your computer, and are using Firefox, Chrome, or Safari. Ensure that openssl, passenger, dnsmasq, and optionally nginx or apache are installed.
+Assumptions: you are using the Bash shell, have admin rights to your computer, and are using Firefox, Chrome, or Safari. Ensure that OpenSSL, Passenger, Dnsmasq, and optionally Nginx or Apache are installed.
 
-Follow these instructions to install passenger: https://www.phusionpassenger.com/library/install/apache/install/enterprise/ you may have to adjust the settings to your desired config, for example using passenger standalone or with nginx.
+Follow <%= link_to "these instructions", "/install/#{locals[:integration_mode_type]}/install/index.html" %> to install Passenger; you may have to adjust the settings to your desired config, for example using Passenger Standalone or with Nginx or Apache integration.
 
 <table class="table table-bordered table-striped">
-    <tr>
-        <td>
-            Debian, Ubuntu
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>sudo apt-get update
+  <tr>
+    <td>
+      Debian, Ubuntu
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>sudo apt-get update
 <span class="prompt">$ </span>sudo apt-get upgrade -y
 <span class="prompt">$ </span>sudo apt-get install -y openssl dnsmasq
 <span class="prompt">$ </span>sudo apt-get install -y apache2 nginx &#35; optional, use at most one webserver
 <span class="prompt">$ </span>sudo a2enmod ssl &#35; only if using apache</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            Red Hat, CentOS, Fedora, Amazon Linux, Scientific Linux
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>sudo yum update -y
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Red Hat, CentOS, Fedora, Amazon Linux, Scientific Linux
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>sudo yum update -y
 <span class="prompt">$ </span>sudo yum install -y openssl dnsmasq openssl-perl
-<span class="prompt">$ </span>sudo yum install -y httpd24 mod24_ssl nginx &#35; optional, mod24_ssl goes with httpd24 install both or neither</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            Mac OS X
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>/usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)" &#35; if not already installed
-<span class="prompt">$ </span>sudo softwareupdate -i -a
+<span class="prompt">$ </span>sudo yum install -y httpd24 mod24_ssl &#35; optional, not to be used with nginx
+<span class="prompt">$ </span>sudo yum install -y nginx &#35; optional, not to be used with apache</pre>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Mac OS X
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>sudo softwareupdate -i -a
 <span class="prompt">$ </span>brew update
 <span class="prompt">$ </span>brew upgrade
 <span class="prompt">$ </span>brew install openssl passenger dnsmasq
 <span class="prompt">$ </span>brew install nginx &#35; optional (apache is already installed)
-&#35; uncomment LoadModule ssl_module libexec/apache2/mod_ssl.so if using apache</pre>
-        </td>
-    </tr>
+<span class="prompt">$ </span>sed -E -i.bak -e 's|#(LoadModule ssl_.*)|\1|' /etc/apache2/httpd.conf &#35; if using apache</pre>
+    </td>
+  </tr>
 </table>
 
-## Software versions used in this article:
+## Software Versions Used in This Article:
 
 to check the versions of the packages you have installed you can use the following commands:
 
 <table class="table table-bordered table-striped">
-    <thead>
-        <th>
-            Package
-        </th>
-        <th>
-            Version
-        </th>
-        <th>
-            Linux Command
-        </th>
-        <th>
-            Mac Command
-        </th>
-    </thead>
-    <tr>
-        <td>
-            openssl
-        </td>
-        <td>
-            1.0.2h
-        </td>
-        <td colspan="2">
-            <pre class="highlight"><span class="prompt">$ </span>openssl version</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            passenger
-        </td>
-        <td>
-            5.0.29
-        </td>
-        <td colspan="2">
-            <pre class="highlight"><span class="prompt">$ </span>passenger -v</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            nginx
-        </td>
-        <td>
-            1.10.1
-        </td>
-        <td colspan="2">
-            <pre class="highlight"><span class="prompt">$ </span>nginx -v</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            apache httpd
-        </td>
-        <td>
-            2.4.18
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>httpd -v || apache2 -v</pre>
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>httpd -v</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            dnsmasq
-        </td>
-        <td>
-            2.76
-        </td>
-        <td colspan="2">
-            <pre class="highlight"><span class="prompt">$ </span>dnsmasq -v</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            firefox
-        </td>
-        <td>
-            47.0.1
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>firefox -v</pre>
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>/Applications/Firefox.app/Contents/MacOS/firefox -v</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            chrome
-        </td>
-        <td>
-            51.0.2704.&#42;
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>google-chrome --version</pre>
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>/Applications/Chrome.app/Contents/MacOS/Google\ Chrome --version</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            safari
-        </td>
-        <td>
-            9.1.1
-        </td>
-        <td>
-            <pre class="highlight">N/A</pre>
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>system_profiler -xml SPApplicationsDataType | xmllint --xpath \
-"//array/dict/array/dict[string='Safari']/key[.='version']/following-sibling::&#42;[1]/text()" -</pre>
-        </td>
-    </tr>
+  <thead>
+    <th>
+      Application
+    </th>
+    <th>
+      Version
+    </th>
+    <th>
+      Linux Command
+    </th>
+    <th>
+      Mac Command
+    </th>
+  </thead>
+  <tr>
+    <td>
+      OpenSSL
+    </td>
+    <td>
+      1.0.2h
+    </td>
+    <td colspan="2">
+      <pre class="highlight"><span class="prompt">$ </span>openssl version</pre>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Passenger
+    </td>
+    <td>
+      5.0.29
+    </td>
+    <td colspan="2">
+      <pre class="highlight"><span class="prompt">$ </span>passenger -v</pre>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Nginx
+    </td>
+    <td>
+      1.10.1
+    </td>
+    <td colspan="2">
+      <pre class="highlight"><span class="prompt">$ </span>nginx -v</pre>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Apache HTTP Server ("httpd")
+    </td>
+    <td>
+      2.4.18
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>httpd -v || apache2 -v</pre>
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>httpd -v</pre>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Dnsmasq
+    </td>
+    <td>
+      2.76
+    </td>
+    <td colspan="2">
+      <pre class="highlight"><span class="prompt">$ </span>dnsmasq -v</pre>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Firefox
+    </td>
+    <td>
+      47.0.1
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>firefox -v</pre>
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>/Applications/Firefox.app/Contents/MacOS/firefox -v</pre>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Chrome
+    </td>
+    <td>
+      51.0.2704.&#42;
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>google-chrome --version</pre>
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>/Applications/Chrome.app/Contents/MacOS/Google\ Chrome --version</pre>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Safari
+    </td>
+    <td>
+      9.1.1
+    </td>
+    <td>
+      <pre class="highlight">N/A</pre>
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>echo `system_profiler -xml SPApplicationsDataType | xmllint --xpath \
+"//dict[string='Safari']/key[.='version']/following-sibling::&#42;[1]/text()" -`</pre>
+    </td>
+  </tr>
 </table>
 
-# Openssl configuration
+# OpenSSL Configuration
 
-When setting up a dev environment with ssl it is better practice to use a self signed certificate, and leave your real certificate/key pair somewhere safe and encrypted, preferably on offline storage like a thumb drive in a safe place. In order to create a certificate that works and makes development convenient, you need to edit the `openssl.cnf` file.
+When setting up a development environment with SSL it is better practice to use a self signed certificate, and leave your real certificate/key pair somewhere safe and encrypted, preferably on offline storage like a thumb drive in a safe place. In order to create a certificate that works and makes development convenient, you need to edit the `openssl.cnf` file.
 
 On OS X this is located at `/usr/local/etc/openssl/openssl.cnf` or if it isn't there you can copy `/usr/local/etc/openssl/openssl.cnf.default` to that path as a starting point, and edit from there.
 
@@ -193,16 +190,16 @@ On linux it may be in one of the following locations: `/usr/local/ssl/openssl.cn
 
 the changes you need to make are as follows:
 
-## uncomment these lines, they enable needed functionality:
+### uncomment these lines, they enable needed functionality:
 ~~~
-# unique_subject = no
-# copy_extensions = copy
-# req_extensions = v3_req
-# keyUsage = nonRepudiation, digitalSignature, keyEncipherment
-# keyUsage = cRLSign, keyCertSign
+# unique_subject = no # allows you to recreate the cert if needed
+# copy_extensions = copy # allows you to have many domains
+# req_extensions = v3_req # allows you to have many domains
+# keyUsage = nonRepudiation, digitalSignature, keyEncipherment # makes cert work with modern browsers
+# keyUsage = cRLSign, keyCertSign # makes cert work with modern browsers
 ~~~
 
-## comment out these lines, they get in the way:
+### comment out these lines, they add nothing and get in the way:
 ~~~
 attributes              = req_attributes
 [ req_attributes ]
@@ -212,13 +209,13 @@ challengePassword_max           = 20
 unstructuredName                = An optional company name
 ~~~
 
-## and modify the following values as indicated:
+### and modify the following values as indicated:
 ~~~
-default_days = 365 → 3650 # there's no reason to have to redo this every year
+default_days = 365 → 3650 # there's no reason to have to redo this every year set to 10
 default_md = default → sha256 # default in openssl 1.1.0, needed for modern browsers
 ~~~
 
-## modify the following values as desired:
+### modify the following values as desired:
 ~~~
 countryName_default             = # two letter country code
 stateOrProvinceName_default     = # name of province or state
@@ -229,20 +226,20 @@ commonName_default              = # your main domain
 emailAddress_default            = # your email
 ~~~
 
-## add this on a new line under `keyUsage = nonRepudiation, digitalSignature, keyEncipherment`:
+### add this on a new line under `keyUsage = nonRepudiation, digitalSignature, keyEncipherment`:
 ~~~
 subjectAltName = @alt_names
 [alt_names]
 DNS.1 = domain1.dev
 DNS.2 = localhost
 DNS.3 = domain2.dev
-DNS.4 = &#42;.domain1.dev
-# and as many more as you want, note: you must use domains not IP addresses
+DNS.4 = *.domain1.dev
+# add and as many more domains as you want, note: you must use domains not IP addresses
 ~~~
 
-## A working sample is provided below, replace occurences of phusion with your own domain:
+### A working sample is provided below, replace occurences of phusion with your own domain:
 <pre class="highlight conf">
-    <code>
+  <code>
 #
 # OpenSSL example configuration file.
 # This is mostly being used for generation of certificate requests.
@@ -604,85 +601,86 @@ tsa_name		= yes	# Must the TSA name be included in the reply?
 # (optional, default: no)
 ess_cert_id_chain	= no	# Must the ESS cert id chain be included?
 # (optional, default: no)
-    </code>
+  </code>
 </pre>
 
-Using a separate TLD for development allows you to access the real production site at the proper url, while having easy access to your dev sites. I use `.dev` and will go into more detail about how to set this up below in the dnsmasq section.
+Using a separate top level domain for development allows you to access the production site at the proper url, while having easy access to your development sites. This guide will use `.dev` and will go into more detail about how to set this up below in the [dnsmasq section](#configure-dns).
 
-While no browser accepts wildcard certificates for entire TLDs if you are developing a bunch of micro services or sites that share a domain and have added a wildcard for the domain to the list of alt names in the cert, then you can simply add more sites to your setup without changing your certificate and by using mass deployment you don't have to change anything to spin up another site, simply create it in the correct directory.
+While no browser accepts wildcard certificates for entire top level domains, if you are developing a large number of micro services or sites that share a domain and have added a wildcard for the domain to the list of alt names in the certificate, then you can simply add more sites to your setup without changing your certificate and by using mass deployment you don't have to modify your webserver or app server configs to spin up another site, simply create it in the correct directory.
 
 ### Add CA.pl to your path:
 <table class="table table-bordered table-striped">
-    <tr>
-        <td>
-            Debian, Ubuntu
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>PATH=$PATH:/usr/lib/ssl/misc</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            Red Hat, CentOS, Fedora, Amazon Linux, Scientific Linux
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>PATH=$PATH:/etc/pki/tls/misc</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            Mac OS X
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>PATH=$PATH:/usr/local/etc/openssl/misc</pre>
-        </td>
-    </tr>
+  <tr>
+    <td>
+      Debian, Ubuntu
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>PATH=$PATH:/usr/lib/ssl/misc</pre>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Red Hat, CentOS, Fedora, Amazon Linux, Scientific Linux
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>PATH=$PATH:/etc/pki/tls/misc</pre>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Mac OS X
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>PATH=$PATH:/usr/local/etc/openssl/misc</pre>
+    </td>
+  </tr>
 </table>
 
-### create your CA using the changes you made to openssl.cnf
+## Create Your Certificate Authority Using the Changes You Made to `openssl.cnf`
 
 <pre class="highlight"><span class="prompt">$ </span>mkdir ~/certs
 <span class="prompt">$ </span>cd ~/certs
-<span class="prompt">$ </span>CA.pl -newca</pre>
+<span class="prompt">$ </span>CA.pl -newca &#35; you can hold enter/return to accept the default values for each question you get asked by the script</pre>
 
-## Trust your new CA cert:
+## Trust your new certificate authority root certificate:
 
-the previous command will create a new subdirectory called demoCA, you’ll need to install the ca certificate from the new demoCA dir into your system keychain (and/or firefox) to prevent your browser from warning you about broken ssl.
+The previous command will create a new subdirectory called demoCA, you’ll need to install the certificate authority root certificate from the new demoCA dir into your system keychain (and/or Firefox) to prevent your browser from warning you about broken SSL.
 
 <table class="table table-bordered table-striped">
-    <tr>
-        <td>
-            Mac OS X with Safari or Chrome:
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>sudo /usr/bin/security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/certs/demoCA/cacert.pem</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            Debian, Ubuntu with Chrome:
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>sudo cp ~/certs/demoCA/cacert.pem /usr/local/share/ca-certificates/myCA.crt
+  <tr>
+    <td>
+      Mac OS X with Safari or Chrome:
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>sudo /usr/bin/security add-trusted-cert -d -r trustRoot -k \
+/Library/Keychains/System.keychain ~/certs/demoCA/cacert.pem</pre>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Debian, Ubuntu with Chrome:
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>sudo cp ~/certs/demoCA/cacert.pem /usr/local/share/ca-certificates/myCA.crt
 <span class="prompt">$ </span>sudo dpkg-reconfigure ca-certificates</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            Fedora 19+, RHEL/CentOS 7+ Chrome:
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>sudo cp ~/certs/demoCA/cacert.pem /etc/pki/ca-trust/source/anchors/
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Fedora 19+, RHEL/CentOS 7+ Chrome:
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>sudo cp ~/certs/demoCA/cacert.pem /etc/pki/ca-trust/source/anchors/
 <span class="prompt">$ </span>sudo update-ca-trust
-<span class="prompt">$ </span>sudo update-ca-trust enable &#35; RHEL/CentOS 6 only since: https://rhn.redhat.com/errata/RHEA-2013-1596.html</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            Any OS with Firefox:
-        </td>
-        <td>
-            <pre>open preferences
+<span class="prompt">$ </span>sudo update-ca-trust enable &#35; RHEL/CentOS 6 only since: <a href="https://rhn.redhat.com/errata/RHEA-2013-1596.html">RHEA-2013-1596</a></pre>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Any OS with Firefox:
+    </td>
+    <td>
+      <pre>open preferences
 click advanced tab
 click certificates tab
 click “view certificates”
@@ -690,33 +688,33 @@ click “import…”
 pick ~/certs/demoCA/cacert.pem file
 In the Downloading Certificate window check "Trust this CA to identify web sites."
 click "OK"</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            Any *nix OS with Curl:
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>curl --cacert ~/certs/demoCA/cacert.pem 'https://mydomain.dev'</pre>
-        </td>
-    </tr>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Any *nix OS with Curl:
+    </td>
+    <td>
+      Pass the <code>--cacert</code> flag to curl when you use it to query your website.
+      <pre class="highlight"><span class="prompt">$ </span>curl --cacert ~/certs/demoCA/cacert.pem 'https://mydomain.dev'</pre>
+    </td>
+  </tr>
 </table>
 
 ## Create the new server certificate/key pair:
 <pre class="highlight"><span class="prompt">$ </span>cd ~/certs
-<span class="prompt">$ </span>CA.pl -newreq-nodes
-<span class="prompt">$ </span>CA.pl -sign
-</pre>
+<span class="prompt">$ </span>CA.pl -newreq-nodes &#35; you can accept all the defaults
+<span class="prompt">$ </span>CA.pl -sign</pre>
 
 ## Configure webserver, replace example.com with your domain:
 
 <table class="table table-bordered table-striped">
-    <tr>
-        <td>
-            Apache
-        </td>
-        <td>
-            <pre class="highlight">
+  <tr>
+    <td>
+      Apache
+    </td>
+    <td>
+      <pre class="highlight">
 ServerTokens Prod
 &lt;VirtualHost *:80&gt;
     Redirect permanent / https://www.example.com/
@@ -749,14 +747,14 @@ ServerTokens Prod
     ServerSignature Off
 
 &lt;/VirtualHost&gt;</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            Nginx
-        </td>
-        <td>
-Use <code><span class="prompt">$ </span>openssl dhparam -out /path/to/dhparam.pem 2048</code> to generate the dhparam file.
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Nginx
+    </td>
+    <td>
+Use <code><span class="prompt">$ </span>openssl dhparam -out /path/to/dhparam.pem 2048</code> to generate the Diffie-Hellman parameters file.
             <pre class="highlight nginx">server_tokens off;
 server {
     listen 80 default_server;
@@ -782,64 +780,64 @@ server {
     passenger_app_env development;
     passenger_app_root /var/www/phusion.dev;
 }</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            Passenger Standalone
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>passenger start --ssl --daemonize --environment development --ssl-certificate ~/certs/newcert.pem \
---ssl-certificate-key ~/certs/newkey.pem --ssl-port 443</pre>
-        </td>
-    </tr>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Passenger Standalone
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>passenger start --ssl --daemonize --environment development --ssl-certificate \
+~/certs/newcert.pem --ssl-certificate-key ~/certs/newkey.pem --ssl-port 443</pre>
+    </td>
+  </tr>
 </table>
 
 ## Configure DNS
 
-Since you need the domain you visit in your browser to match the ssl cert, you still need to direct all your dev traffic back to localhost. Next I'll describe setting up dnsmasq & configuring your own TLD in order to do just that.
+Since you need the domain you visit in your browser to match the SSL certificate, you still need to direct all your development traffic back to localhost. Next I'll describe setting up dnsmasq & configuring your own top level domain in order to do just that.
 
-Note some older versions of OS X actually ignored entries in the hosts file for new TLDs (for example: `.dev` stopped working once Google started responding to dns queries for that TLD (yes Google owns `.dev`, but they've stated it's for internal use only, so you're unlikely to break anything if you use it, unless you work for google)), which makes using a dns resolver like dnsmasq all the more useful, because you workaround that bug.
+Note some older versions of OS X actually ignored entries in the hosts file for new top level domains (for example: `.dev` stopped working once Google started responding to DNS queries for that top level domain. Google owns `.dev`, but they've stated it's for internal use only, so you're unlikely to break anything if you use it, unless you work for Google), which makes using a DNS resolver like dnsmasq all the more useful, because you workaround that bug.
 
 <table class="table table-bordered table-striped">
-    <tr>
-        <td>
-            In Ubuntu 12.10 or later you can do this with dnsmasq as run by NetworkManager.
-        </td>
-        <td>
-            <pre class="highlight"><span class="prompt">$ </span>sudo mkdir -p /etc/NetworkManager/dnsmasq.d
+  <tr>
+    <td>
+      In Ubuntu 12.10+ use NetworkManager's Dnsmasq:
+    </td>
+    <td>
+      <pre class="highlight"><span class="prompt">$ </span>sudo mkdir -p /etc/NetworkManager/dnsmasq.d
 <span class="prompt">$ </span>sudo echo 'address=/dev/127.0.0.1' &gt; /etc/NetworkManager/dnsmasq.d/dev-TLD
 <span class="prompt">$ </span>sudo service network-manager restart # (Ubuntu 12.10)
 <span class="prompt">$ </span>sudo service dnsmasq restart # (Ubuntu &gt; 13.04)</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            Other Linux
-        </td>
-        <td>
-            <pre class="highlight">
+    </td>
+  </tr>
+  <tr>
+    <td>
+      Other Linux:
+    </td>
+    <td>
+      <pre class="highlight">
 <span class="prompt">$ </span>sudo echo 'address=/dev/127.0.0.1' &gt; /etc/dnsmasq.d/dev-TLD
 <span class="prompt">$ </span>prepend domain-name-servers 127.0.0.1
 <span class="prompt">$ </span>sudo service NetworkManager restart
 <span class="prompt">$ </span>sudo service dnsmasq start</pre>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            In OS X:
-        </td>
-        <td>
-            <pre class="highlight">
+    </td>
+  </tr>
+  <tr>
+    <td>
+      OS X:
+    </td>
+    <td>
+      <pre class="highlight">
 <span class="prompt">$ </span>echo 'address=/dev/127.0.0.1' &gt;&gt; `brew --prefix`/etc/dnsmasq.conf
 <span class="prompt">$ </span>sudo cp `brew --prefix dnsmasq`/homebrew.mxcl.dnsmasq.plist /Library/LaunchDaemons/
 <span class="prompt">$ </span>sudo launchctl load /Library/LaunchDaemons/homebrew.mxcl.dnsmasq.plist
 <span class="prompt">$ </span>sudo mkdir -p /etc/resolver
 <span class="prompt">$ </span>sudo echo 'nameserver 127.0.0.1' &gt; /etc/resolver/dev</pre>
-        </td>
-    </tr>
+    </td>
+  </tr>
 </table>
 
 ## Done
 
-Now if you restart your web server, ssl should be working and your browser shouldn't complain.
+Now if you restart your web server, SSL should be working and your browser shouldn't complain when you visit your page over `https`.
