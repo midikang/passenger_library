@@ -3,15 +3,21 @@ title: Using SSL with Passenger in Development
 section: walkthroughs
 ---
 <%
-locals.merge!(INTEGRATION_MODE_STANDALONE)
-globals.merge!(INTEGRATION_MODE_STANDALONE)
-content_for(:sidebar) do
-  render_partial("../sidebar.html", locals: locals)
-end
+  locals.merge!(INTEGRATION_MODE_STANDALONE)
+  globals.merge!(INTEGRATION_MODE_STANDALONE)
+  content_for(:sidebar) do
+    render_partial("../sidebar.html", locals: locals)
+  end
 %>
 <h1>Using SSL with Passenger in development</h1>
 
 It is a good idea to have your development environment be as close to your production environment as possible, without getting in your way. For example setting up SSL in your development environment helps you to fix mixed content warnings so there are no surprises when you move to staging or production, and doesn't train you to click through SSL warnings in your browser.
+
+If you already have a production SSL certificate, this could be achieved as simply as starting passenger with:
+<pre class="highlight"><span class="prompt">$ </span>passenger start --ssl --environment development --ssl-certificate /path/to/certificate.pem --ssl-certificate-key /path/to/key.pem --ssl-port 443</pre>
+However that approach has some downsides, your produciton certificate and secret key are sitting on an actively used box which makes them easier to steal, you need a production certificate before you are even done your development work, you need to edit your hosts file every time you start a new site, and you need to edit your hosts file again any time you want to access the production website once it is published.
+
+Instead this walkthrugh will show you how to create, trust, and install a self signed certificate in your development webserver, and setup your DNS to redirect all your development traffic back to your development box.
 
 ## Prepare the System
 
@@ -230,14 +236,16 @@ emailAddress_default            = # your email
 ~~~
 subjectAltName = @alt_names
 [alt_names]
-DNS.1 = domain1.dev
-DNS.2 = localhost
-DNS.3 = domain2.dev
-DNS.4 = *.domain1.dev
-# add and as many more domains as you want, note: you must use domains not IP addresses
+DNS.1 = localhost
+DNS.2 = example.dev
+DNS.3 = example2.dev
+DNS.4 = *.example1.dev
+IP.1 = 127.0.0.1
+IP.2 = ::1
+# add and as many more domains as you want
 ~~~
 
-### A working sample is provided below, replace occurences of phusion with your own domain:
+### A working sample is provided below, replace occurrences of example.dev with your own domain:
 <pre class="highlight conf">
   <code>
 #
@@ -379,7 +387,7 @@ localityName			= Locality Name (eg, city)
 localityName_default            = Amsterdam
 
 0.organizationName		= Organization Name (eg, company)
-0.organizationName_default	= Phusion
+0.organizationName_default	= My Company
 
 # we can do this but it is not needed normally :-)
 #1.organizationName		= Second Organization Name (eg, company)
@@ -390,11 +398,11 @@ organizationalUnitName_default	= Certificate Services
 
 commonName			= Common Name (e.g. server FQDN or YOUR name)
 commonName_max			= 64
-commonName_default              = www.phusion.nl
+commonName_default              = www.example.dev
 
 emailAddress			= Email Address
 emailAddress_max		= 64
-emailAddress_default            = info@phusion.nl
+emailAddress_default            = info@example.dev
 
 # SET-ex3			= SET extension number 3
 
@@ -468,11 +476,13 @@ keyUsage = nonRepudiation, digitalSignature, keyEncipherment
 subjectAltName          = @alt_names
 
 [alt_names]
-DNS.1 = domain1.dev
-DNS.2 = localhost
-DNS.3 = domain2.dev
-DNS.4 = &#42;.domain1.dev
-# and as many more as you want, note you must use domains not IP addresses
+DNS.1 = localhost
+DNS.2 = example.dev
+DNS.3 = example2.dev
+DNS.4 = *.example1.dev
+IP.1 = 127.0.0.1
+IP.2 = ::1
+# and as many more as you want
 
 [ v3_ca ]
 
@@ -604,7 +614,7 @@ ess_cert_id_chain	= no	# Must the ESS cert id chain be included?
   </code>
 </pre>
 
-Using a separate top level domain for development allows you to access the production site at the proper url, while having easy access to your development sites. This guide will use `.dev` and will go into more detail about how to set this up below in the [dnsmasq section](#configure-dns).
+Using a separate top level domain (TLD) for development allows you to access the production site at the proper url, while having easy access to your development sites. This guide will use `.dev` and will go into more detail about how to set this up below in the [dnsmasq section](#configure-dns).
 
 While no browser accepts wildcard certificates for entire top level domains, if you are developing a large number of micro services or sites that share a domain and have added a wildcard for the domain to the list of alt names in the certificate, then you can simply add more sites to your setup without changing your certificate and by using mass deployment you don't have to modify your webserver or app server configs to spin up another site, simply create it in the correct directory.
 
@@ -706,7 +716,7 @@ click "OK"</pre>
 <span class="prompt">$ </span>CA.pl -newreq-nodes &#35; you can accept all the defaults
 <span class="prompt">$ </span>CA.pl -sign</pre>
 
-## Configure webserver, replace example.com with your domain:
+## Configure webserver, replace example.dev with your domain:
 
 <table class="table table-bordered table-striped">
   <tr>
@@ -717,13 +727,13 @@ click "OK"</pre>
       <pre class="highlight">
 ServerTokens Prod
 &lt;VirtualHost *:80&gt;
-    Redirect permanent / https://www.example.com/
-    ServerName example.com
-    ServerAlias www.example.com
+    Redirect permanent / https://www.example.dev/
+    ServerName example.dev
+    ServerAlias www.example.dev
 &lt;/VirtualHost&gt;
 
 &lt;VirtualHost *:443&gt;
-    ServerName www.example.com
+    ServerName www.example.dev
 
     ProxyPreserveHost On
     ProxyPass / http://localhost:3000/
@@ -754,8 +764,8 @@ ServerTokens Prod
       Nginx
     </td>
     <td>
-Use <code><span class="prompt">$ </span>openssl dhparam -out /path/to/dhparam.pem 2048</code> to generate the Diffie-Hellman parameters file.
-            <pre class="highlight nginx">server_tokens off;
+      Use <code><span class="prompt">$ </span>openssl dhparam -out /path/to/dhparam.pem 2048</code> to generate the Diffie-Hellman parameters file.
+      <pre class="highlight nginx">server_tokens off;
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -764,8 +774,8 @@ server {
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
-    root /var/www/phusion.dev/public;
-    server_name phusion.dev;
+    root /var/www/example.dev/public;
+    server_name example.dev;
     ssl_certificate /usr/local/etc/nginx/ssl/server.crt;
     ssl_certificate_key /usr/local/etc/nginx/ssl/server.key;
     ssl_session_timeout 1d;
@@ -778,7 +788,7 @@ server {
     add_header Strict-Transport-Security max-age=31536000;
     passenger_enabled on;
     passenger_app_env development;
-    passenger_app_root /var/www/phusion.dev;
+    passenger_app_root /var/www/example.dev;
 }</pre>
     </td>
   </tr>
@@ -795,9 +805,9 @@ server {
 
 ## Configure DNS
 
-Since you need the domain you visit in your browser to match the SSL certificate, you still need to direct all your development traffic back to localhost. Next I'll describe setting up dnsmasq & configuring your own top level domain in order to do just that.
+Since you need the domain you visit in your browser to match the SSL certificate, you still need to direct all your development traffic back to localhost. One option is to edit your hosts file (located at `/etc/hosts`) and add entries to redirect each development domain back to your computer. That solution works*, but doesn't scale well. Next I'll describe setting up Dnsmasq & configuring your own top level domain in order to save having to edit the hosts file repeatedly.
 
-Note some older versions of OS X actually ignored entries in the hosts file for new top level domains (for example: `.dev` stopped working once Google started responding to DNS queries for that top level domain. Google owns `.dev`, but they've stated it's for internal use only, so you're unlikely to break anything if you use it, unless you work for Google), which makes using a DNS resolver like dnsmasq all the more useful, because you workaround that bug.
+*Note some older versions of OS X actually ignored entries in the hosts file for new top level domains (for example: `.dev` stopped working once Google started responding to DNS queries for that top level domain. Google owns `.dev`, but they've stated it's for internal use only, so you're unlikely to break anything if you use it, unless you work for Google), which makes using a DNS resolver like Dnsmasq all the more useful, because you workaround that bug.
 
 <table class="table table-bordered table-striped">
   <tr>
@@ -840,4 +850,4 @@ Note some older versions of OS X actually ignored entries in the hosts file for 
 
 ## Done
 
-Now if you restart your web server, SSL should be working and your browser shouldn't complain when you visit your page over `https`.
+Now if you restart your web server, SSL should be working and your browser shouldn't complain when you visit your page over https.
