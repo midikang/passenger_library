@@ -3,20 +3,22 @@ title: Using an SSL terminating reverse proxy with Passenger
 section: walkthroughs
 ---
 <%
-  locals.merge!(INTEGRATION_MODE_STANDALONE)
-  globals.merge!(INTEGRATION_MODE_STANDALONE)
-  content_for(:sidebar) do
-    render_partial("../sidebar.html", locals: locals)
-  end
+locals.merge!(INTEGRATION_MODE_STANDALONE)
+globals.merge!(INTEGRATION_MODE_STANDALONE)
+content_for(:sidebar) do
+  render_partial("../sidebar.html", locals: locals.merge(
+    limit_choices: { "intmode" => [INTEGRATION_MODE_STANDALONE] }
+  ))
+end
 %>
 
 <h1>Using an SSL Terminating Reverse Proxy with Passenger</h1>
 
-An SSL terminating reverse proxy is simply a web server that is configured to accept encrypted https requests from clients, and to forward them as unencrypted http requests to another backend process, and to relay the unencrypted results from the backend process back to the client via the encrypted channel. In our case the backend process will be Passenger running on the same host. Setting up an SSL terminating reverse proxy is super easy, and this article will walk you through how to do it.
+An SSL terminating reverse proxy is simply a web server that is configured to accept encrypted https requests from clients, and to forward them as unencrypted http requests to another backend process, and to relay the unencrypted results from the backend process back to the client via the encrypted channel. In our case the backend process will be Passenger Standalone running on the same host. Setting up an SSL terminating reverse proxy is super easy, and this article will walk you through how to do it.
 
 ## Prepare the system
 
-Follow [these instructions](<%= url_for "/deploy/#{locals[:integration_mode_type]}/reverse_proxy.html" %>), before continuing with this guide.
+Follow [these instructions](<%= url_for "/deploy/standalone/reverse_proxy.html" %>), before continuing with this guide.
 
 Assumptions: you are using the bash shell, and have admin rights to your computer, and are using a modern browser. Ensure that OpenSSL is installed.
 
@@ -29,7 +31,7 @@ Assumptions: you are using the bash shell, and have admin rights to your compute
       <pre class="highlight"><span class="prompt">$ </span>sudo apt-get update
 <span class="prompt">$ </span>sudo apt-get upgrade -y
 <span class="prompt">$ </span>sudo apt-get install -y openssl
-<span class="prompt">$ </span>sudo a2enmod ssl &#35; only if using apache</pre>
+<span class="prompt">$ </span>sudo a2enmod ssl &#35; only if using Apache</pre>
     </td>
   </tr>
   <tr>
@@ -53,7 +55,7 @@ Assumptions: you are using the bash shell, and have admin rights to your compute
 <span class="prompt">$ </span>brew update
 <span class="prompt">$ </span>brew upgrade
 <span class="prompt">$ </span>brew install openssl
-<span class="prompt">$ </span>sudo sed -E -i.bak -e 's|#(LoadModule ssl_)|\1|' /etc/apache2/httpd.conf &#35; if using apache</pre>
+<span class="prompt">$ </span>sudo sed -E -i.bak -e 's|#(LoadModule ssl_)|\1|' /etc/apache2/httpd.conf &#35; if using Apache</pre>
     </td>
   </tr>
 </table>
@@ -76,7 +78,7 @@ To check the versions of the packages you have installed you can use the followi
   </thead>
   <tr>
     <td>
-      openssl
+      OpenSSL
     </td>
     <td>
       1.0.2h
@@ -87,7 +89,7 @@ To check the versions of the packages you have installed you can use the followi
   </tr>
   <tr>
     <td>
-      passenger
+      Passenger
     </td>
     <td>
       5.0.29
@@ -98,7 +100,7 @@ To check the versions of the packages you have installed you can use the followi
   </tr>
   <tr>
     <td>
-      nginx
+      Nginx
     </td>
     <td>
       1.10.1
@@ -109,7 +111,7 @@ To check the versions of the packages you have installed you can use the followi
   </tr>
   <tr>
     <td>
-      apache httpd
+      Apache Httpd
     </td>
     <td>
       2.4.18
@@ -121,22 +123,23 @@ To check the versions of the packages you have installed you can use the followi
 </table>
 
 ## Obtain your certificate / key pair
-You can read up on self signing a certificate in [this article](<% url_for "/deploy/#{locals[:integration_mode_type]}/devssl.html#openssl-configuration" %>) or if this is for production use you can use let's encrypt or another CA to get a valid cert.
+You can read up on self signing a certificate in [this article](<%= url_for "/deploy/standalone/dev_ssl.html#openssl-configuration" %>) or if this is for production use you can use [Let's Encrypt](https://letsencrypt.org/) or another certificate authority to get a valid certificate.
 
-## Configure webserver, replace example.com with your domain:
+## Configure Web Server
+Replace example.com with your domain:
 
 <table class="table table-bordered table-striped">
   <thead>
     <th>Web Server</th>
     <th>Changes</th>
-    <th>Example Config</th>
+    <th>Example Configuration</th>
   </thead>
   <tr>
     <td>
       Apache
     </td>
     <td>
-      Move your http/port-80 virtual host config to port 443, and setup a redirect, then add the ssl configs to your port 443 virtualhost. The headers and server signature configs are more useful in production. The end result should look similar to the provided config. If you have multiple https virtualhosts on the same box you must add <code>SSLStrictSNIVHostCheck off</code> to your apache config, you can set it just above your virtualhost blocks.
+      Move your http/port-80 virtual host configuration to port 443, and setup a redirect, then add the SSL options to your port 443 virtualhost. The headers and server signature options are more useful in production. The end result should look similar to the provided configuration. If you have multiple https virtualhosts on the same box you must add <code>SSLStrictSNIVHostCheck off</code> to your Apache configuration, you can set it just above your virtualhost blocks.
     </td>
     <td>
       <pre class="highlight">SSLStrictSNIVHostCheck off
@@ -182,7 +185,7 @@ AES256-SHA:DES-CBC3-SHA:!DSS
       Nginx
     </td>
     <td>
-      Change your listen configs from port 80 to the ssl verisons to the right. create a redirect from http to https as shown. Add the ssl configs as described to the right. You must generate a dhparam file, this can be done with <code><span class="prompt">$ </span>openssl dhparam -out /usr/local/etc/nginx/ssl/dhparam.pem 2048</code>
+      Change your listen options from port 80 to the SSL versions to the right. Create a redirect from http to https as shown. Add the SSL options as described to the right. You must generate a dhparam file, this can be done with <code><span class="prompt">$ </span>openssl dhparam -out /usr/local/etc/nginx/ssl/dhparam.pem 2048</code>
     </td>
     <td>
       <pre class="highlight nginx">server_tokens off;
@@ -225,8 +228,8 @@ server {
 </table>
 
 ## Start Passenger
-In this setup passenger can run in it's easiest configuration, so you can start it with nothing more than `passenger start`.
+In this setup Passenger can run in it's easiest configuration, so you can start it with nothing more than <code><span class="prompt">$ </span>passenger start</code>.
 
 ## Done
 
-Now if you restart your web server, ssl should be working and passenger should be serving your app.
+Now if you restart your web server, SSL should be working and Passenger should be serving your app.
