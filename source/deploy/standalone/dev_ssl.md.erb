@@ -19,6 +19,11 @@ However that approach has some downsides, your produciton certificate and secret
 
 Instead this walkthrugh will show you how to create, trust, and install a self signed certificate in your development web server, and setup your DNS to redirect all your development traffic back to your development box.
 
+<div>
+  <p><strong>Table of contents</strong></p>
+  <ol class="toc-container"><li>Loading...</li></ol>
+</div>
+
 ## Prepare the System
 
 Assumptions: you are using the Bash shell, have admin rights to your computer, and are using Firefox, Chrome, or Safari. Ensure that OpenSSL, Passenger, Dnsmasq, and optionally Nginx or Apache are installed.
@@ -229,7 +234,8 @@ commonName_default              = <span class="si">example.dev</span> <span clas
 emailAddress_default            = <span class="si">admin@example.dev</span> <span class="c"># your email</span>
 </code></pre>
 
-### add this on a new line under `keyUsage = nonRepudiation, digitalSignature, keyEncipherment`:
+### specify all your development domains
+add the following on a new line under `keyUsage = nonRepudiation, digitalSignature, keyEncipherment`:
 <pre class="highlight conf"><code>subjectAltName = @alt_names
 [alt_names]
 <span class="si">DNS.1 = localhost</span>
@@ -502,7 +508,7 @@ Replace example.dev with your domain:
     SSLCompression off <span class="c"># not all versions of Apache+OpenSSL allow this option</span>
 
     Header always edit Set-Cookie ^(.*)$ $1;HttpOnly;Secure
-    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    Header always set Strict-Transport-Security <span class="s">"max-age=31536000; includeSubDomains"</span>
 &lt;/VirtualHost&gt;</pre>
     </td>
   </tr>
