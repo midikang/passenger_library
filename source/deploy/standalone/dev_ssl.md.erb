@@ -8,16 +8,20 @@ section: walkthroughs
   content_for(:sidebar) do
     render_partial("../sidebar.html", locals: locals)
   end
+locals[:integration_mode_type] = :nginx
+locals[:integration_mode_type] = :apache
 %>
 <h1>Using SSL with Passenger in development</h1>
 
 It is a good idea to have your development environment be as close to your production environment as possible, without getting in your way. For example setting up SSL in your development environment helps you to fix mixed content warnings so there are no surprises when you move to staging or production, and doesn't train you to click through SSL warnings in your browser.
 
+<% if locals[:integration_mode_type] == :standalone %>
 If you already have a production SSL certificate, this could be achieved as simply as starting passenger with:
 <pre class="highlight bash"><span class="prompt">$ </span>passenger start --ssl --environment development --ssl-certificate <span class="si">/path/to/certificate.pem</span> --ssl-certificate-key <span class="si">/path/to/key.pem</span> --ssl-port 443</pre>
 However that approach has some downsides, your produciton certificate and secret key are sitting on an actively used box which makes them easier to steal, you need a production certificate before you are even done your development work, you need to edit your hosts file every time you start a new site, and you need to edit your hosts file again any time you want to access the production website once it is published.
+<% end %>
 
-Instead this walkthrugh will show you how to create, trust, and install a self signed certificate in your development web server, and setup your DNS to redirect all your development traffic back to your development box.
+This walkthrough will show you how to create, trust, and install a self signed certificate in your development web server, and setup your DNS to redirect all your development traffic back to your development box.
 
 <div>
   <p><strong>Table of contents</strong></p>
@@ -28,7 +32,7 @@ Instead this walkthrugh will show you how to create, trust, and install a self s
 
 Assumptions: you are using the Bash shell, have admin rights to your computer, and are using Firefox, Chrome, or Safari. Ensure that OpenSSL, Passenger, Dnsmasq, and optionally Nginx or Apache are installed.
 
-Follow <%= link_to "these instructions", "/install/#{locals[:integration_mode_type]}/install/index.html" %> to install Passenger; you may have to adjust the settings to your desired config, for example using Passenger Standalone or with Nginx or Apache integration.
+Follow <%= link_to "these instructions", "/install/#{locals[:integration_mode_type]}/install/index.html" %> to install Passenger; you may have to adjust the settings to your desired config, for example using Passenger Enterprise or OSS.
 
 <table class="table table-bordered table-striped">
   <tr>
@@ -39,8 +43,13 @@ Follow <%= link_to "these instructions", "/install/#{locals[:integration_mode_ty
       <pre class="highlight bash"><span class="prompt">$ </span>sudo apt-get update
 <span class="prompt">$ </span>sudo apt-get upgrade -y
 <span class="prompt">$ </span>sudo apt-get install -y openssl dnsmasq
-<span class="prompt">$ </span>sudo apt-get install -y apache2 nginx <span class="c">&#35; optional, use at most one web server</span>
-<span class="prompt">$ </span>sudo a2enmod ssl <span class="c">&#35; only if using Apache</span></pre>
+<% if locals[:integration_mode_type] == :apache %>
+<span class="prompt">$ </span>sudo apt-get install -y apache2
+<span class="prompt">$ </span>sudo a2enmod ssl
+<% elsif locals[:integration_mode_type] == :nginx %>
+<span class="prompt">$ </span>sudo apt-get install -y nginx
+<% end %>
+</pre>
     </td>
   </tr>
   <tr>
@@ -50,8 +59,12 @@ Follow <%= link_to "these instructions", "/install/#{locals[:integration_mode_ty
     <td>
       <pre class="highlight bash"><span class="prompt">$ </span>sudo yum update -y
 <span class="prompt">$ </span>sudo yum install -y openssl dnsmasq openssl-perl
-<span class="prompt">$ </span>sudo yum install -y httpd24 mod24_ssl <span class="c">&#35; optional, not to be used with Nginx</span>
-<span class="prompt">$ </span>sudo yum install -y nginx <span class="c">&#35; optional, not to be used with Apache</span></pre>
+<% if locals[:integration_mode_type] == :apache %>
+<span class="prompt">$ </span>sudo yum install -y httpd24 mod24_ssl
+<% elsif locals[:integration_mode_type] == :nginx %>
+<span class="prompt">$ </span>sudo yum install -y nginx
+<% end %>
+</pre>
     </td>
   </tr>
   <tr>
@@ -63,15 +76,19 @@ Follow <%= link_to "these instructions", "/install/#{locals[:integration_mode_ty
 <span class="prompt">$ </span>brew update
 <span class="prompt">$ </span>brew upgrade
 <span class="prompt">$ </span>brew install openssl passenger dnsmasq
-<span class="prompt">$ </span>brew install nginx <span class="c">&#35; optional (Apache is already installed)</span>
-<span class="prompt">$ </span>sed -E -i.bak -e <span class="s">'s|#(LoadModule ssl_.*)|\1|'</span> /etc/apache2/httpd.conf <span class="c">&#35; if using Apache</span></pre>
+<% if locals[:integration_mode_type] == :apache %>
+<span class="prompt">$ </span>sed -E -i.bak -e <span class="s">'s|#(LoadModule ssl_.*)|\1|'</span> /etc/apache2/httpd.conf
+<% elsif locals[:integration_mode_type] == :nginx %>
+<span class="prompt">$ </span>brew install nginx
+<% end %>
+</pre>
     </td>
   </tr>
 </table>
 
 ### Software versions used in this article:
 
-to check the versions of the packages you have installed you can use the following commands:
+To check the versions of the packages you have installed you can use the following commands:
 
 <table class="table table-bordered table-striped">
   <thead>
@@ -110,6 +127,7 @@ to check the versions of the packages you have installed you can use the followi
       <pre class="highlight bash"><span class="prompt">$ </span>passenger -v</pre>
     </td>
   </tr>
+<% if locals[:integration_mode_type] == :nginx %>
   <tr>
     <td>
       Nginx
@@ -121,9 +139,10 @@ to check the versions of the packages you have installed you can use the followi
       <pre class="highlight bash"><span class="prompt">$ </span>nginx -v</pre>
     </td>
   </tr>
+<% elsif locals[:integration_mode_type] == :apache %>
   <tr>
     <td>
-      Apache HTTP Server ("httpd")
+      Apache
     </td>
     <td>
       2.4.18
@@ -135,6 +154,7 @@ to check the versions of the packages you have installed you can use the followi
       <pre class="highlight bash"><span class="prompt">$ </span>httpd -v</pre>
     </td>
   </tr>
+<% end %>
   <tr>
     <td>
       Dnsmasq
@@ -199,7 +219,7 @@ On OS X this is located at `/usr/local/etc/openssl/openssl.cnf` or if it isn't t
 
 On linux it may be in one of the following locations: `/usr/local/ssl/openssl.cnf` `/usr/lib/ssl/openssl.cnf` `/etc/ssl/openssl.cnf` `/etc/pki/tls/openssl.cnf`
 
-the changes you need to make are as follows:
+The changes you need to make are as follows:
 
 ### uncomment these lines, they enable needed functionality:
 <pre class="highlight"><code><span class="gd">#</span> unique_subject = no <span class="c"># allows you to recreate the cert if needed</span>
@@ -247,10 +267,15 @@ add the following on a new line under `keyUsage = nonRepudiation, digitalSignatu
 # add as many more domains, and IPs as you want
 </code></pre>
 
+Using a separate top level domain (TLD) for development allows you to access the production site at the proper url, while having easy access to your development sites. This guide will use `.dev` and will go into more detail about how to set this up below in the [DNS section](#configure-dns).
+
+While no browser accepts wildcard certificates for entire top level domains, if you are developing a large number of micro services or sites that share a domain and have added a wildcard for the domain to the list of alt names in the certificate, then you can simply add more sites to your setup without changing your certificate and by using [mass deployment](<%= url_for "/deploy/standalone/mass_deployment.html" %>) you don't have to modify your web server or app server configs to spin up another site, simply create it in the correct directory.
+
 ### A working sample is provided below
 Replace occurrences of example.dev with your own domain:
-<pre class="highlight conf">
-  <code>HOME			= .
+
+~~~conf
+HOME			= .
 RANDFILE		= $ENV::HOME/.rnd
 oid_section		= new_oids
 [ new_oids ]
@@ -258,28 +283,28 @@ tsa_policy1 = 1.2.3.4.1
 tsa_policy2 = 1.2.3.4.5.6
 tsa_policy3 = 1.2.3.4.5.7
 [ ca ]
-default_ca	= CA_default		<span class="c"># The default ca section</span>
+default_ca	= CA_default		# The default ca section
 [ CA_default ]
-dir		= ./demoCA		<span class="c"># Where everything is kept</span>
-certs		= $dir/certs		<span class="c"># Where the issued certs are kept</span>
-crl_dir		= $dir/crl		<span class="c"># Where the issued crl are kept</span>
-database	= $dir/index.txt	<span class="c"># database index file.</span>
-unique_subject	= no			<span class="c"># Set to 'no' to allow creation of</span>
-new_certs_dir	= $dir/newcerts		<span class="c"># default place for new certs.</span>
-certificate	= $dir/cacert.pem       <span class="c"># The CA certificate</span>
-serial		= $dir/serial           <span class="c"># The current serial number</span>
-crlnumber	= $dir/crlnumber	<span class="c"># the current crl number</span>
-crl		= $dir/crl.pem          <span class="c"># The current CRL</span>
-private_key	= $dir/private/cakey.pem<span class="c"># The private key</span>
-RANDFILE	= $dir/private/.rand	<span class="c"># private random number file</span>
-x509_extensions	= usr_cert		<span class="c"># The extentions to add to the cert</span>
-name_opt        = ca_default		<span class="c"># Subject Name options</span>
-cert_opt        = ca_default		<span class="c"># Certificate field options</span>
+dir		= ./demoCA		# Where everything is kept
+certs		= $dir/certs		# Where the issued certs are kept
+crl_dir		= $dir/crl		# Where the issued crl are kept
+database	= $dir/index.txt	# database index file.
+unique_subject	= no			# Set to 'no' to allow creation of
+new_certs_dir	= $dir/newcerts		# default place for new certs.
+certificate	= $dir/cacert.pem       # The CA certificate
+serial		= $dir/serial           # The current serial number
+crlnumber	= $dir/crlnumber	# the current crl number
+crl		= $dir/crl.pem          # The current CRL
+private_key	= $dir/private/cakey.pem# The private key
+RANDFILE	= $dir/private/.rand	# private random number file
+x509_extensions	= usr_cert		# The extentions to add to the cert
+name_opt        = ca_default		# Subject Name options
+cert_opt        = ca_default		# Certificate field options
 copy_extensions = copy
-default_days	= 3650			<span class="c"># how long to certify for</span>
-default_crl_days= 30			<span class="c"># how long before next CRL</span>
-default_md	= sha256		<span class="c"># which md to use.</span>
-preserve	= no			<span class="c"># keep passed DN ordering</span>
+default_days	= 3650			# how long to certify for
+default_crl_days= 30			# how long before next CRL
+default_md	= sha256		# which md to use.
+preserve	= no			# keep passed DN ordering
 policy		= policy_match
 [ policy_match ]
 countryName		= match
@@ -300,28 +325,28 @@ emailAddress		= optional
 default_bits		= 4096
 default_keyfile         = privkey.pem
 distinguished_name	= req_distinguished_name
-x509_extensions	= v3_ca	<span class="c"># The extentions to add to the self signed cert</span>
+x509_extensions	= v3_ca	# The extentions to add to the self signed cert
 string_mask = utf8only
-req_extensions = v3_req <span class="c"># The extensions to add to a certificate request</span>
+req_extensions = v3_req # The extensions to add to a certificate request
 [ req_distinguished_name ]
 countryName			= Country Name (2 letter code)
-countryName_default		= <span class="si">NL</span>
+countryName_default		= NL
 countryName_min			= 2
 countryName_max			= 2
 stateOrProvinceName		= State or Province Name (full name)
-stateOrProvinceName_default	= <span class="si">North Holland</span>
+stateOrProvinceName_default	= North Holland
 localityName			= Locality Name (eg, city)
-localityName_default            = <span class="si">Amsterdam</span>
+localityName_default            = Amsterdam
 0.organizationName		= Organization Name (eg, company)
 0.organizationName_default	= My Company
 organizationalUnitName		= Organizational Unit Name (eg, section)
 organizationalUnitName_default	= Certificate Services
 commonName			= Common Name (e.g. server FQDN or YOUR name)
 commonName_max			= 64
-commonName_default              = <span class="si">www.example.dev</span>
+commonName_default              = www.example.dev
 emailAddress			= Email Address
 emailAddress_max		= 64
-emailAddress_default            = <span class="si">info@example.dev</span>
+emailAddress_default            = info@example.dev
 [ usr_cert ]
 basicConstraints=CA:FALSE
 keyUsage = nonRepudiation, digitalSignature, keyEncipherment
@@ -333,12 +358,12 @@ basicConstraints = CA:FALSE
 keyUsage = nonRepudiation, digitalSignature, keyEncipherment
 subjectAltName          = @alt_names
 [alt_names]
-<span class="si">DNS.1 = localhost</span>
-<span class="si">DNS.2 = example.dev</span>
-<span class="si">DNS.3 = example2.dev</span>
-<span class="si">DNS.4 = *.example1.dev</span>
-<span class="si">IP.1 = 127.0.0.1</span>
-<span class="si">IP.2 = ::1</span>
+DNS.1 = localhost
+DNS.2 = example.dev
+DNS.3 = example2.dev
+DNS.4 = *.example1.dev
+IP.1 = 127.0.0.1
+IP.2 = ::1
 [ v3_ca ]
 subjectKeyIdentifier=hash
 authorityKeyIdentifier=keyid:always,issuer
@@ -353,28 +378,23 @@ subjectKeyIdentifier=hash
 authorityKeyIdentifier=keyid,issuer
 proxyCertInfo=critical,language:id-ppl-anyLanguage,pathlen:3,policy:foo
 [ tsa ]
-default_tsa = tsa_config1	<span class="c"># the default TSA section</span>
+default_tsa = tsa_config1	# the default TSA section
 [ tsa_config1 ]
-dir		= ./demoCA		<span class="c"># TSA root directory</span>
-serial		= $dir/tsaserial	<span class="c"># The current serial number (mandatory)</span>
-crypto_device	= builtin		<span class="c"># OpenSSL engine to use for signing</span>
-signer_cert	= $dir/tsacert.pem      <span class="c"># The TSA signing certificate</span>
-certs		= $dir/cacert.pem	<span class="c"># Certificate chain to include in reply</span>
-signer_key	= $dir/private/tsakey.pem <span class="c"># The TSA private key (optional)</span>
-default_policy	= tsa_policy1		<span class="c"># Policy if request did not specify it</span>
-other_policies	= tsa_policy2, tsa_policy3	<span class="c"># acceptable policies (optional)</span>
-digests		= md5, sha1		<span class="c"># Acceptable message digests (mandatory)</span>
-accuracy	= secs:1, millisecs:500, microsecs:100	<span class="c"># (optional)</span>
-clock_precision_digits  = 0	<span class="c"># number of digits after dot. (optional)</span>
-ordering		= yes	<span class="c"># Is ordering defined for timestamps?</span>
-tsa_name		= yes	<span class="c"># Must the TSA name be included in the reply?</span>
-ess_cert_id_chain	= no	<span class="c"># Must the ESS cert id chain be included?</span>
-  </code>
-</pre>
-
-Using a separate top level domain (TLD) for development allows you to access the production site at the proper url, while having easy access to your development sites. This guide will use `.dev` and will go into more detail about how to set this up below in the [DNS section](#configure-dns).
-
-While no browser accepts wildcard certificates for entire top level domains, if you are developing a large number of micro services or sites that share a domain and have added a wildcard for the domain to the list of alt names in the certificate, then you can simply add more sites to your setup without changing your certificate and by using [mass deployment](<%= url_for "/deploy/standalone/mass_deployment.html" %>) you don't have to modify your web server or app server configs to spin up another site, simply create it in the correct directory.
+dir		= ./demoCA		# TSA root directory
+serial		= $dir/tsaserial	# The current serial number (mandatory)
+crypto_device	= builtin		# OpenSSL engine to use for signing
+signer_cert	= $dir/tsacert.pem      # The TSA signing certificate
+certs		= $dir/cacert.pem	# Certificate chain to include in reply
+signer_key	= $dir/private/tsakey.pem # The TSA private key (optional)
+default_policy	= tsa_policy1		# Policy if request did not specify it
+other_policies	= tsa_policy2, tsa_policy3	# acceptable policies (optional)
+digests		= md5, sha1		# Acceptable message digests (mandatory)
+accuracy	= secs:1, millisecs:500, microsecs:100	# (optional)
+clock_precision_digits  = 0	# number of digits after dot. (optional)
+ordering		= yes	# Is ordering defined for timestamps?
+tsa_name		= yes	# Must the TSA name be included in the reply?
+ess_cert_id_chain	= no	# Must the ESS cert id chain be included?
+~~~
 
 ### Add CA.pl to your path:
 <table class="table table-bordered table-striped">
@@ -383,7 +403,7 @@ While no browser accepts wildcard certificates for entire top level domains, if 
       Debian, Ubuntu
     </td>
     <td>
-      <pre class="highlight"><span class="prompt">$ </span>PATH=$PATH:/usr/lib/ssl/misc</pre>
+      <pre class="highlight shell"><code><span class="nv">PATH</span><span class="o">=</span><span class="nv">$PATH</span>:/usr/lib/ssl/misc</code></pre>
     </td>
   </tr>
   <tr>
@@ -391,7 +411,7 @@ While no browser accepts wildcard certificates for entire top level domains, if 
       Red Hat, CentOS, Fedora, Amazon Linux, Scientific Linux
     </td>
     <td>
-      <pre class="highlight"><span class="prompt">$ </span>PATH=$PATH:/etc/pki/tls/misc</pre>
+      <pre class="highlight shell"><code><span class="nv">PATH</span><span class="o">=</span><span class="nv">$PATH</span>:/etc/pki/tls/misc</code></pre>
     </td>
   </tr>
   <tr>
@@ -399,7 +419,7 @@ While no browser accepts wildcard certificates for entire top level domains, if 
       Mac OS X
     </td>
     <td>
-      <pre class="highlight"><span class="prompt">$ </span>PATH=$PATH:/usr/local/etc/openssl/misc</pre>
+      <pre class="highlight shell"><code><span class="nv">PATH</span><span class="o">=</span><span class="nv">$PATH</span>:/usr/local/etc/openssl/misc</code></pre>
     </td>
   </tr>
 </table>
@@ -441,7 +461,7 @@ The previous command will have created a new subdirectory called demoCA, you’l
     <td>
       <pre class="highlight"><span class="prompt">$ </span>sudo cp <span class="si">~/certs/demoCA/cacert.pem</span> /etc/pki/ca-trust/source/anchors/
 <span class="prompt">$ </span>sudo update-ca-trust
-<span class="prompt">$ </span>sudo update-ca-trust enable &#35; RHEL/CentOS 6 only since: <a href="https://rhn.redhat.com/errata/RHEA-2013-1596.html">RHEA-2013-1596</a></pre>
+<span class="prompt">$ </span>sudo update-ca-trust enable <span class="c">&#35; RHEL/CentOS 6 only since: </span><a href="https://rhn.redhat.com/errata/RHEA-2013-1596.html">RHEA-2013-1596</a></pre>
     </td>
   </tr>
   <tr>
@@ -465,7 +485,7 @@ click "OK"</pre>
     </td>
     <td>
       Pass the <code>--cacert</code> flag to curl when you use it to query your website.
-      <pre class="highlight"><span class="prompt">$ </span>curl --cacert <span class="si">~/certs/demoCA/cacert.pem</span> 'https://mydomain.dev'</pre>
+      <pre class="highlight"><span class="prompt">$ </span>curl --cacert <span class="si">~/certs/demoCA/cacert.pem</span> <span class="s">'https://example.dev'</span></pre>
     </td>
   </tr>
 </table>
@@ -476,50 +496,46 @@ You can accept all the defaults, as you already customized them earlier.
 <span class="prompt">$ </span>CA.pl -newreq-nodes
 <span class="prompt">$ </span>CA.pl -sign</pre>
 
-## Configure Web Server
-Replace example.dev with your domain:
+## Configure Passenger <%= locals[:integration_mode_name_as_passenger_suffix] %>
+Replace `example.dev` with your domain, and set the paths to your app and the certificate/key pair you created:
 
-<table class="table table-bordered table-striped">
-  <tr>
-    <td>
-      Apache
-    </td>
-    <td>
-      <pre class="highlight apacheconf">
-&lt;VirtualHost *:80&gt;
-    Redirect permanent / <span class="si">https://www.example.dev/</span>
-    ServerName <span class="si">example.dev</span>
-    ServerAlias <span class="si">www.example.dev</span>
-&lt;/VirtualHost&gt;
+<% if locals[:integration_mode_type] == :apache %>
+~~~apache
+<VirtualHost *:80>
+    Redirect permanent / https://www.example.dev/
+    ServerName example.dev
+    ServerAlias www.example.dev
+</VirtualHost>
 
-&lt;VirtualHost *:443&gt;
-    ServerName <span class="si">www.example.dev</span>
-
-    ProxyPreserveHost On
-    ProxyPass / http://localhost:3000/
-    ProxyPassReverse / http://localhost:3000/
-
+<VirtualHost *:443>
+    ServerName example.dev
+    ServerAlias www.example.dev
+    SSLCertificateFile "/etc/apache2/server.crt"
+    SSLCertificateKeyFile "/etc/apache2/server.key"
+    PassengerAppRoot "/path/to/app"
+    DocumentRoot "/path/to/app/public"
+    ErrorLog "/var/log/apache2/example.dev-error_log"
+    CustomLog "/var/log/apache2/example.dev-access_log" common
+    <Directory "/path/to/app/public">
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+    PassengerEnv development
     SSLEngine on
     SSLProtocol all -SSLv2 -SSLv3
     SSLHonorCipherOrder on
     SSLCipherSuite HIGH
-    SSLCertificateFile <span class="si">"/private/etc/apache2/server.crt"</span>
-    SSLCertificateKeyFile <span class="si">"/private/etc/apache2/server.key"</span>
-    SSLCompression off <span class="c"># not all versions of Apache+OpenSSL allow this option</span>
-
+    SSLCompression off # not all versions of Apache+OpenSSL allow this option
     Header always edit Set-Cookie ^(.*)$ $1;HttpOnly;Secure
-    Header always set Strict-Transport-Security <span class="s">"max-age=31536000; includeSubDomains"</span>
-&lt;/VirtualHost&gt;</pre>
-    </td>
-  </tr>
-  <tr>
-    <td>
-      Nginx
-    </td>
-    <td>
-      Generate the Diffie-Hellman parameters file using this command:
-      <pre class ="highlight bash"><span class="prompt">$ </span>openssl dhparam -out <span class="si">/path/to/dhparam.pem</span> 2048</pre>
-      <pre class="highlight nginx">server {
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+</VirtualHost>
+~~~
+<% elsif locals[:integration_mode_type] == :nginx %>
+Generate the Diffie-Hellman parameters file using this command:
+<pre class ="highlight bash"><span class="prompt">$ </span>openssl dhparam -out <span class="si">/path/to/dhparam.pem</span> 2048</pre>
+~~~nginx
+server {
     listen 80 default_server;
     listen [::]:80 default_server;
     return 301 https://$host$request_uri;
@@ -527,34 +543,27 @@ Replace example.dev with your domain:
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
-    root <span class="si">/var/www/example.dev/public</span>;
-    server_name <span class="si">example.dev</span>;
-    ssl_certificate <span class="si">/usr/local/etc/nginx/ssl/server.crt</span>;
-    ssl_certificate_key <span class="si">/usr/local/etc/nginx/ssl/server.key</span>;
+    root /var/www/example.dev/public;
+    passenger_app_root /var/www/example.dev;
+    server_name example.dev;
+    ssl_certificate /usr/local/etc/nginx/ssl/server.crt;
+    ssl_certificate_key /usr/local/etc/nginx/ssl/server.key;
+    ssl_dhparam /usr/local/etc/nginx/ssl/dhparam.pem;
     ssl_session_timeout 1d;
     ssl_session_cache shared:SSL:50m;
     ssl_session_tickets off;
-    ssl_dhparam <span class="si">/usr/local/etc/nginx/ssl/dhparam.pem</span>;
     ssl_prefer_server_ciphers on;
     ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
     ssl_ciphers HIGH;
     add_header Strict-Transport-Security max-age=31536000;
     passenger_enabled on;
     passenger_app_env development;
-    passenger_app_root <span class="si">/var/www/example.dev</span>;
-}</pre>
-    </td>
-  </tr>
-  <tr>
-    <td>
-      Passenger Standalone
-    </td>
-    <td>
-      <pre class="highlight"><span class="prompt">$ </span>passenger start --ssl --daemonize --environment development --ssl-certificate \
-<span class="si">~/certs/newcert.pem</span> --ssl-certificate-key <span class="si">~/certs/newkey.pem</span> --ssl-port 443</pre>
-    </td>
-  </tr>
-</table>
+}
+~~~
+<% else %>
+<pre class="highlight"><span class="prompt">$ </span>passenger start --ssl --daemonize --environment development --ssl-certificate \
+<span class="si">~/certs/newcert.pem</span> --ssl-certificate-key <span class="si">~/certs/newkey.pem</span> --port 443</pre>
+<% end %>
 
 ## Configure DNS
 
@@ -603,4 +612,9 @@ Since you need the domain you visit in your browser to match the SSL certificate
 
 ## Done
 
-Now if you restart your web server, SSL should be working and your browser shouldn't complain when you visit your page over https.
+Now if you restart Passenger <%= locals[:integration_mode_name_as_passenger_suffix] %>, SSL should be working and your browser shouldn't complain when you visit your app over https.
+
+~~~bash
+PATH=$PATH:/etc/pki/tls/misc
+PATH=$PATH:/usr/local/etc/openssl/misc
+~~~
