@@ -230,6 +230,9 @@ server {
 ## Start Passenger
 In this setup Passenger can run in it's easiest configuration, so you can start it with nothing more than <code><span class="prompt">$ </span>passenger start</code>.
 
+However since passenger standalone by default uses nginx internally, you are getting
+nginx-behind-nginx which you may not want, in this case you can specify that you want to use passenger's builtin webserver instead.
+
 ## Done
 
 Now if you restart your web server, SSL should be working and Passenger should be serving your app.

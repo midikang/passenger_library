@@ -231,11 +231,19 @@ SUPPORTED_LANGUAGES.each do |language_spec|
     locals: language_spec
 end
 
+INTEGRATION_MODES.each do |integration_mode_spec|
+  integration_mode_type = integration_mode_spec[:integration_mode_type]
+  proxy "/dev/#{integration_mode_type}/dev_ssl.html",
+    "/dev/dev_ssl.html",
+    locals: integration_mode_spec
+end
+
 ignore "/dev/index2.html"
 ignore "/dev/standalone_dev.html"
 ignore "/dev/code_reloading.html"
 ignore "/dev/multitenancy_and_microservices.html"
 ignore "/dev/turbocaching.html"
+ignore "/dev/dev_ssl.html"
 
 ###### Deployment, scaling and high availability ######
 
