@@ -16,6 +16,13 @@ end
 
 An SSL terminating reverse proxy is simply a web server that is configured to accept encrypted https requests from clients, and to forward them as unencrypted http requests to another backend process, and to relay the unencrypted results from the backend process back to the client via the encrypted channel. In our case the backend process will be Passenger Standalone running on the same host. Setting up an SSL terminating reverse proxy is super easy, and this article will walk you through how to do it.
 
+### Which reverse proxy are you using?
+<select id="proxy_picker">
+  <option>Apache</option>
+  <option>Nginx</option>
+</select>
+
+
 ## Prepare the system
 
 Follow [these instructions](<%= url_for "/deploy/standalone/reverse_proxy.html" %>), before continuing with this guide.
@@ -31,7 +38,7 @@ Assumptions: you are using the bash shell, and have admin rights to your compute
       <pre class="highlight"><span class="prompt">$ </span>sudo apt-get update
 <span class="prompt">$ </span>sudo apt-get upgrade -y
 <span class="prompt">$ </span>sudo apt-get install -y openssl
-<span class="prompt">$ </span>sudo a2enmod ssl <span class="c">&#35; only if using Apache</span></pre>
+<span class="apache"><span class="prompt">$ </span>sudo a2enmod ssl</span></pre>
     </td>
   </tr>
   <tr>
@@ -41,8 +48,8 @@ Assumptions: you are using the bash shell, and have admin rights to your compute
     <td>
       <pre class="highlight"><span class="prompt">$ </span>sudo yum update -y
 <span class="prompt">$ </span>sudo yum install -y openssl
-<span class="prompt">$ </span>sudo yum install -y mod24_ssl <span class="c">&#35; only if using httpd24</span>
-<span class="prompt">$ </span>sudo yum install -y mod_ssl <span class="c">&#35; only if using httpd</span></pre>
+<span class="apache"><span class="prompt">$ </span>sudo yum install -y mod24_ssl <span class="c">&#35; only if using httpd24</span>
+<span class="prompt">$ </span>sudo yum install -y mod_ssl <span class="c">&#35; only if using httpd</span></span></pre>
 
     </td>
   </tr>
@@ -55,7 +62,7 @@ Assumptions: you are using the bash shell, and have admin rights to your compute
 <span class="prompt">$ </span>brew update
 <span class="prompt">$ </span>brew upgrade
 <span class="prompt">$ </span>brew install openssl
-<span class="prompt">$ </span>sudo sed -E -i.bak -e <span class="s">'s|#(LoadModule ssl_)|\1|'</span> /etc/apache2/httpd.conf <span class="c">&#35; if using Apache</span></pre>
+<span class="apache"><span class="prompt">$ </span>sudo sed -E -i.bak -e <span class="s">'s|#(LoadModule ssl_)|\1|'</span> /etc/apache2/httpd.conf</span></pre>
     </td>
   </tr>
 </table>
@@ -98,7 +105,7 @@ To check the versions of the packages you have installed you can use the followi
       <pre class="highlight"><span class="prompt">$ </span>passenger -v</pre>
     </td>
   </tr>
-  <tr>
+  <tr class="nginx">
     <td>
       Nginx
     </td>
@@ -109,7 +116,7 @@ To check the versions of the packages you have installed you can use the followi
       <pre class="highlight"><span class="prompt">$ </span>nginx -v</pre>
     </td>
   </tr>
-  <tr>
+  <tr class="apache">
     <td>
       Apache Httpd
     </td>
@@ -134,7 +141,7 @@ Replace example.com with your domain:
     <th>Changes</th>
     <th>Example Configuration</th>
   </thead>
-  <tr>
+  <tr class="apache">
     <td>
       Apache
     </td>
@@ -180,7 +187,7 @@ AES256-SHA:DES-CBC3-SHA:!DSS
 &lt;/VirtualHost&gt;</pre>
     </td>
   </tr>
-  <tr>
+  <tr class="nginx">
     <td>
       Nginx
     </td>
@@ -230,8 +237,7 @@ server {
 ## Start Passenger
 In this setup Passenger can run in it's easiest configuration, so you can start it with nothing more than <code><span class="prompt">$ </span>passenger start</code>.
 
-However since passenger standalone by default uses nginx internally, you are getting
-nginx-behind-nginx which you may not want, in this case you can specify that you want to use passenger's builtin webserver instead.
+<p class="nginx">However since Passenger Standalone by default uses Nginx internally, you are getting Nginx-behind-Nginx which you may not want, in this case you can specify that you want to use Passenger's builtin web server instead. <code><span class="prompt">$ </span>passenger start --engine builtin</code></p>
 
 ## Done
 
