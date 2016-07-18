@@ -252,6 +252,9 @@ INTEGRATION_MODES.each do |integration_mode_spec|
   proxy "/deploy/#{integration_mode_type}/deployment_error_resistance.html",
     "/deploy/deployment_error_resistance.html",
     locals: integration_mode_spec
+  proxy "/deploy/#{integration_mode_type}/prod_ssl.html",
+    "/deploy/prod_ssl.html",
+    locals: integration_mode_spec
 
 
   if integration_mode_type == :nginx || integration_mode_type == :apache
@@ -295,6 +298,8 @@ ignore "/deploy/user_sandboxing.html"
 ignore "/deploy/zero_downtime_redeployments.html"
 ignore "/deploy/flying_passenger.html"
 ignore "/deploy/deployment_error_resistance.html"
+ignore "/deploy/prod_ssl.html"
+
 
 ###### Administration and troubleshooting ######
 
