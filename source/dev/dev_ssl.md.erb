@@ -14,8 +14,8 @@ It is a good idea to have your development environment be as close to your produ
 
 <% if locals[:integration_mode_type] == :standalone %>
 If you already have a production SSL certificate, this could be achieved as simply as starting passenger with:
-<pre class="highlight bash"><span class="prompt">$ </span>passenger start --ssl --environment development --ssl-certificate <span class="si">/path/to/certificate.pem</span> --ssl-certificate-key <span class="si">/path/to/key.pem</span> --ssl-port 443</pre>
-However that approach has some downsides, your produciton certificate and secret key are sitting on an actively used box which makes them easier to steal, you need a production certificate before you are even done your development work, you need to edit your hosts file every time you start a new site, and you need to edit your hosts file again any time you want to access the production website once it is published.
+<pre class="highlight bash"><span class="prompt">$ </span>passenger start --ssl --environment development --ssl-certificate <span class="si">/path/to/certificate.pem</span> --ssl-certificate-key <span class="si">/path/to/key.pem</span> --port 443</pre>
+However that approach has some downsides, your production certificate and secret key are sitting on an actively used box which makes them easier to steal, you need a production certificate before you are even done your development work, you need to edit your hosts file every time you start a new site, and you need to edit your hosts file again any time you want to access the production website once it is published.
 <% end %>
 
 This walkthrough will show you how to create, trust, and install a self signed certificate in your development web server, and setup your DNS to redirect all your development traffic back to your development box.
@@ -294,7 +294,7 @@ crlnumber	= $dir/crlnumber	# the current crl number
 crl		= $dir/crl.pem          # The current CRL
 private_key	= $dir/private/cakey.pem# The private key
 RANDFILE	= $dir/private/.rand	# private random number file
-x509_extensions	= usr_cert		# The extentions to add to the cert
+x509_extensions	= usr_cert		# The extensions to add to the cert
 name_opt        = ca_default		# Subject Name options
 cert_opt        = ca_default		# Certificate field options
 copy_extensions = copy
@@ -322,7 +322,7 @@ emailAddress		= optional
 default_bits		= 4096
 default_keyfile         = privkey.pem
 distinguished_name	= req_distinguished_name
-x509_extensions	= v3_ca	# The extentions to add to the self signed cert
+x509_extensions	= v3_ca	# The extensions to add to the self signed cert
 string_mask = utf8only
 req_extensions = v3_req # The extensions to add to a certificate request
 [ req_distinguished_name ]
@@ -422,7 +422,7 @@ ess_cert_id_chain	= no	# Must the ESS cert id chain be included?
 </table>
 
 ## Create Your Certificate Authority
-The changes you made to `openssl.cnf` will allow the certificates produced with your CA to be accepted by modern browsers. You can hold enter/return to accept the default values for each question you get asked by the script.
+The changes you made to `openssl.cnf` will allow the certificates produced with your CA to be accepted by modern browsers. You can hold enter/return to accept the default values for each question you get asked by the script, with the exception of the passphrase which must be at least 4 characters long.
 
 <pre class="highlight"><span class="prompt">$ </span>mkdir <span class="si">~/certs</span>
 <span class="prompt">$ </span>cd <span class="si">~/certs</span>
